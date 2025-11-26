@@ -28,7 +28,7 @@ A typical experiment can be divided into 3 phases:
 3. Clean-up the pi (optional but highly encouraged): 'clean-home.yaml'
 
 ## Update
-Though ansible playbooks can be ran from commandline (ideal for testing), the **server** folder contains python scripts to automate some tasks.
+Though ansible playbooks can be run from commandline (ideal for testing), the **server** folder contains python scripts to automate some tasks.
 
 First, activate (or create and activate) the python venv on the server:
 ```bash
