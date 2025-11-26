@@ -4,7 +4,6 @@
 - name: Ensure Git repository is present
   hosts: all
   vars:
-    repo_name: "geometry-based-wireless-power-transfer"
     repo_url: "https://github.com/techtile-by-dramco/{{ repo_name }}.git"
     dest_dir: "/home/pi/{{ repo_name }}"
     version: "main"

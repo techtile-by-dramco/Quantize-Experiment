@@ -1,0 +1,9 @@
+server/bin
+server/bin/*
+server/include
+server/include/*
+server/lib
+server/lib/*
+server/lib64
+server/lib64/*
+server/pyvenv.cfg
