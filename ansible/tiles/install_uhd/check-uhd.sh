@@ -61,7 +61,8 @@ EOF
 fi
 
 # Add the necessary lines to .bashrc
-BASHRC="$HOME/.bashrc"
+ROOT_BASHRC="/root/.bashrc"
+PI_BASHRC="/home/pi/.bashrc"
 
 # Lines to ensure exist, using the variable
 LINE1="export UHD_IMAGES_DIR=\"$images_dir\""
@@ -69,19 +70,21 @@ LINE2='export PYTHONPATH="/usr/local/lib/python3.11/site-packages:$PYTHONPATH"'
 
 # Function: append line if no line starts with the same variable
 append_if_missing_prefix() {
-    local line="$1"
+    local bashrc="$1"      # first argument = bashrc file
+    local line="$2"        # second argument = line to append
     local var_name=$(echo "$line" | cut -d '=' -f 1)
-    
-    if ! grep -q "^$var_name" "$BASHRC"; then
-        echo "$line" >> "$BASHRC"
-        echo "Added line to $BASHRC: $line"
+
+    if ! grep -q "^$var_name" "$bashrc"; then
+        echo "$line" >> "$bashrc"
+        echo "Added line to $bashrc: $line"
     else
-        echo "Variable '$var_name' already defined in $BASHRC"
+        echo "Variable '$var_name' already defined in $bashrc"
     fi
 }
 
 # Check each line
-append_if_missing_prefix "$LINE1"
+append_if_missing_prefix "$ROOT_BASHRC" "$LINE1"
+append_if_missing_prefix "$PI_BASHRC" "$LINE1"
 #append_if_missing_prefix "$LINE2"
 
 python3 - <<'EOF'
