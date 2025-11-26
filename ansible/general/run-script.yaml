@@ -8,8 +8,8 @@
   vars:
     default_script_path: "/home/pi/check_status.sh"
     script_timeout: 3600  # max runtime in seconds
-    become: "{{ become | default(no) }}"
-    become_flags: "{{ become_flags }}"
+    sudo: "{{ sudo | default(no) }}" # sudo=[yes|no]
+    sudo_flags: "{{ sudo_flags }}"
 
   tasks:
     - name: Set script path (use extra-var if provided, otherwise default)
@@ -34,6 +34,8 @@
 
     - name: Run the script asynchronously
       ansible.builtin.command: "{{ script_path }}"
+      become: "{{ sudo }}"
+      become_flags: "{{ sudo_flags }}"
       async: "{{ script_timeout }}"
       poll: 0
       register: async_job
@@ -48,16 +50,16 @@
       delay: 10
       when: script_stat.stat.exists
 
-    - name: Fail if script result is not OK
+    - name: Fail if script result does not end with OK
       ansible.builtin.fail:
         msg: "The script reported: {{ job_result.stdout }}"
       when:
         - script_stat.stat.exists
-        - job_result.stdout != "OK"
+        - not job_result.stdout | trim | regex_search('OK$')
 
-    - name: Success message if OK
+    - name: Success message if output ends with OK
       ansible.builtin.debug:
         msg: "The script returned OK"
       when:
         - script_stat.stat.exists
-        - job_result.stdout == "OK"
+        - job_result.stdout | trim | regex_search('OK$')

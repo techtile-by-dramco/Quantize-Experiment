@@ -76,11 +76,11 @@ append_if_missing_prefix() {
     local before="$3"
     local var_name=$(echo "$line" | cut -d '=' -f 1)
 
-    if ! grep -q "^$var_name" "$bashrc"; then
-        echo "$before$line" >> "$bashrc"
-        echo "Added line to $bashrc: $line"
+    if ! grep -q "^$var_name" "$file"; then
+        echo "$before$line" >> "$file"
+        echo "Added line to $file: $line"
     else
-        echo "Variable '$var_name' already defined in $bashrc"
+        echo "Variable '$var_name' already defined in $file"
     fi
 }
 
@@ -105,8 +105,6 @@ except Exception as e:
 EOF
 
 echo "Done checking .bashrc."
-
-
 
 echo "OK"   # output "OK" is captured by ansible
 exit 0
