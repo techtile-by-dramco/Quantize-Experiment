@@ -50,3 +50,5 @@ deactivate
 
 ## TODO
 Review this information and put it somewhere visible.
+
+Add code for power management (power-up/down tiles), because "the environment..."

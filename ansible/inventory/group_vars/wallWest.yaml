@@ -1,6 +1,0 @@
-port: 6555
-current_group: wallWest
-channels: 0
-rate: 250e3
-freq: 900e6
-gain: 50
