@@ -1080,10 +1080,8 @@ def main():
         time.sleep(1)
         # Explicit cleanup
         if 'tx_streamer' in locals():
-            tx_streamer.stop()
             del tx_streamer
         if 'rx_streamer' in locals():
-            rx_streamer.stop()
             del rx_streamer
         if 'usrp' in locals():
             del usrp
