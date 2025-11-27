@@ -1070,7 +1070,6 @@ def main():
 
         stop_cmd = types.StreamCMD(types.StreamMode.stop_cont)
         tx_streamer.issue_stream_cmd(stop_cmd)
-        rx_streamer.issue_stream_cmd(stop_cmd)
 
         print("DONE")
 
