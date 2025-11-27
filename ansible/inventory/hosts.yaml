@@ -979,6 +979,14 @@ all:
         G18:
         G19:
         G20:
+    testing:
+      hosts:
+        A05:
+        A06:
+        A07:
+        A08:
+        A09:
+        A10:
     rpis:
       children:
         wallEast:

@@ -2,7 +2,7 @@
 # Run a script on the client and register the output
 # ansible-playbook -i hosts.yaml run_status.yml --extra-vars "script_path=/tmp/my_script.sh" [--limit a-single host]
 ---
-- name: Run status script asynchronously and check result
+- name: Run script asynchronously and check result
   hosts: all
   become: no
   vars:
@@ -51,15 +51,16 @@
       when: script_stat.stat.exists
 
     - name: Fail if script result does not end with OK
-      ansible.builtin.fail:
-        msg: "The script reported: {{ job_result.stdout }}"
       when:
         - script_stat.stat.exists
-        - not job_result.stdout | trim | regex_search('OK$')
+        - (job_result.stdout | trim | regex_search('OK$')) is none
+      fail:
+        msg: "Script did NOT end with OK"
 
     - name: Success message if output ends with OK
-      ansible.builtin.debug:
-        msg: "The script returned OK"
       when:
         - script_stat.stat.exists
-        - job_result.stdout | trim | regex_search('OK$')
+        - (job_result.stdout | trim | regex_search('OK$')) is not none
+      debug:
+        msg: "Script ended with OK"
+        

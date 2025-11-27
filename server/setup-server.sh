@@ -32,4 +32,5 @@ echo "Python: $(python --version)"
 echo "pip: $(pip --version)"
 
 pip install ansible-runner
+pip install ansible-core
 # add other python packages you might need

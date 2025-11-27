@@ -5,6 +5,7 @@ artifacts/*
 env
 env/*
 
+server/__pycache__
 server/bin
 server/bin/*
 server/include
@@ -14,3 +15,4 @@ server/lib/*
 server/lib64
 server/lib64/*
 server/pyvenv.cfg
+server/utils/__pycache__

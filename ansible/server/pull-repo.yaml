@@ -4,7 +4,7 @@
 - name: Ensure Git repository is present
   hosts: all
   vars:
-    repo_url: "https://github.com/techtile-by-dramco/{{ repo_name }}.git"
+    repo_url: "https://github.com/{{ org_name }}/{{ repo_name }}.git"
     dest_dir: "/home/pi/{{ repo_name }}"
     version: "main"
 
@@ -14,8 +14,12 @@
         repo: "{{ repo_url }}"
         dest: "{{ dest_dir }}"
         version: "{{ version }}"
-        update: yes          # pull latest changes if repo already exists
-        force: yes           # optional, overwrite local changes if necessary
-        accept_hostkey: yes  # auto-accept SSH host key
+        update: yes
+        force: yes
+        accept_hostkey: yes
       become: no
       remote_user: pi
+      register: git_result
+      until: git_result is succeeded
+      retries: 5          # try up to 5 times
+      delay: 10           # wait 10 seconds between retries
