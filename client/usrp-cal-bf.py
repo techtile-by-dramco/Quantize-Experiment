@@ -1088,15 +1088,15 @@ def main():
         try:
             del tx_streamer
         except Exception as e:
-            logger.warning("Failed to delete tx_streamer: %s", e)
+            print("Failed to delete tx_streamer:", e)
         try:
             del rx_streamer
         except Exception as e:
-            logger.warning("Failed to delete rx_streamer: %s", e)
+            print("Failed to delete rx_streamer:", e)
         try:
             del usrp
         except Exception as e:
-            logger.warning("Failed to delete usrp: %s", e)
+            print("Failed to delete usrp:", e)
         
         # Allow threads and streams to close properly
         time.sleep(0.5)
