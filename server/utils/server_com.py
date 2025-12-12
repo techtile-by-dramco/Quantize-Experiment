@@ -6,12 +6,13 @@ import threading
 from datetime import datetime, timedelta
 
 class Server:
-    def __init__(self, bind="tcp://*:5678", heartbeat_timeout=10):
+    def __init__(self, bind="tcp://*:5678", heartbeat_timeout=10, silent=False):
         self.ctx = zmq.Context()
         self.sock = self.ctx.socket(zmq.ROUTER)
         self.sock.bind(bind)
         self.clients = {}
         self.heartbeat_timeout = heartbeat_timeout
+        self.silent = silent
         self.running = True
         self.thread = None
 
@@ -81,11 +82,13 @@ class Server:
 
                     # Handle messages
                     if msg_type == "heartbeat":
-                        print(f"[HEARTBEAT] {identity.decode()}")
+                        if not self.silent:
+                            print(f"[HEARTBEAT] {identity.decode()}")
                     elif msg_type == "response":
-                        print(f"[RESPONSE] {identity.decode()}: {msg_payload}")
+                        if not self.silent:
+                            print(f"[RESPONSE] {identity.decode()}: {msg_payload}")
 
-                self.purge_dead()
+                self._purge_dead()
 
         except KeyboardInterrupt:
             # Interrupt outside poll, e.g. between iterations
@@ -93,17 +96,70 @@ class Server:
         finally:
             self.cleanup()
 
-    def purge_dead(self):
+    def _purge_dead(self):
         now = datetime.utcnow()
         dead = []
         for cid, info in list(self.clients.items()):
             if now - info["last_seen"] > timedelta(seconds=self.heartbeat_timeout):
                 dead.append(cid)
         for cid in dead:
-            print(f"[TIMEOUT] Removing client {cid.decode()}")
+            if not self.silent:
+                print(f"[TIMEOUT] Removing client {cid.decode()}")
             del self.clients[cid]
                 
-    def print_clients(self):
-        print("connected clients:")
-        for cid, info in list(self.clients.items()):
-            print(cid, "- last seen:", info["last_seen"])
+    def print_clients(self, short=False):
+        if len(self.clients) == 0:
+            print("no connected clients")
+        else:
+            if short:
+                cids = sorted(self.clients)
+                cidstr = ""
+                for cid in cids:
+                    if len(cidstr) > 0:
+                        cidstr += " "
+                    cidstr += cid.decode();
+                print(cidstr)
+            else:
+                print("connected clients:")
+                for cid, info in list(self.clients.items()):
+                    print(cid, "- last seen:", info["last_seen"])
+
+    def send(self, client_id, msg_type, *payload_frames):
+        """
+        Send a message to a specific connected client.
+
+        Parameters
+        ----------
+        client_id : bytes
+            The ROUTER identity of the client.
+        msg_type : str
+            Message type string (e.g., 'command', 'ping', etc.).
+        payload_frames : list of bytes or str
+            Optional additional frames after the message type.
+        """
+        if client_id not in self.clients:
+            raise ValueError(f"Client {client_id!r} is not connected.")
+
+        # Build multipart message
+        frames = [client_id, msg_type.encode()]
+        for frame in payload_frames:
+            if isinstance(frame, str):
+                frame = frame.encode()
+            frames.append(frame)
+
+        self.sock.send_multipart(frames)
+
+    def broadcast(self, msg_type, *payload_frames):
+        """
+        Send a message to all currently connected clients.
+
+        Parameters
+        ----------
+        msg_type : str
+            Message type string.
+        payload_frames : list of bytes or str
+            Optional frames after the message type.
+        """
+        for cid in list(self.clients.keys()):
+            print("sending to", cid)
+            self.send(cid, msg_type, *payload_frames)

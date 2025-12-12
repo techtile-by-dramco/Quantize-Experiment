@@ -39,6 +39,9 @@ class Client:
         self.socket.setsockopt(zmq.HEARTBEAT_IVL, 3000)        # client heartbeats to server
         self.socket.setsockopt(zmq.HEARTBEAT_TIMEOUT, 10000)
         self.socket.setsockopt(zmq.HEARTBEAT_TTL, 30000)
+        
+        # Event handling
+        self.callbacks = {}
 
     def start(self):
         if self.running:
@@ -67,6 +70,30 @@ class Client:
     def join(self):
         if self.thread:
             self.thread.join()
+
+    def on(self, command, func):
+        """Register a callback for a given server command."""
+        self.callbacks[command] = func
+
+    def send(self, msg_type, *payload_frames):
+        """
+        Send a message to the server.
+
+        Parameters
+        ----------
+        msg_type : str
+            Message type string (e.g., 'heartbeat', 'request', etc.).
+        payload_frames : optional list of bytes or str
+            Additional frames to send after the message type.
+        """
+
+        frames = [msg_type.encode()]
+        for frame in payload_frames:
+            if isinstance(frame, str):
+                frame = frame.encode()
+            frames.append(frame)
+
+        self.sock.send_multipart(frames)
 
     def _run(self):
         poller = zmq.Poller()
@@ -113,22 +140,25 @@ class Client:
             return
 
         command = frames[0].decode()
+        args = [f.decode() for f in frames[1:]]
 
+        # If a callback exists, call it
+        if command in self.callbacks:
+            try:
+                self.callbacks[command](command, args)
+            except Exception as e:
+                print(f"Callback error for {command}: {e}")
+            return
+
+        # Default built-in handlers
         if command == "ping":
             try:
                 self.socket.send_multipart([b"pong", b"ok"], zmq.NOBLOCK)
             except zmq.Again:
                 pass
-
-        elif command == "do_something":
-            result = b"done"
-            try:
-                self.socket.send_multipart([b"result", result], zmq.NOBLOCK)
-            except zmq.Again:
-                pass
-
         else:
             try:
                 self.socket.send_multipart([b"error", b"unknown_command"], zmq.NOBLOCK)
             except zmq.Again:
                 pass
+

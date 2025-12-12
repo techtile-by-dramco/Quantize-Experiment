@@ -18,12 +18,22 @@ args = parser.parse_args()
 
 client = Client(args.config_file)
 
+def handle_ping(command, args):
+    print("Received PING event:", command, args)
+
+def handle_custom(command, args):
+    print("Received sync command:", command, args)
+    client.send("ack", "got sync")
+
 def handle_signal(signum, frame):
     print("\nStopping client...")
     client.stop()
 
 signal.signal(signal.SIGINT, handle_signal)
 signal.signal(signal.SIGTERM, handle_signal)
+
+client.on("ping", handle_ping)
+client.on("sync", handle_custom)
 
 if __name__ == "__main__":
     client.start()
