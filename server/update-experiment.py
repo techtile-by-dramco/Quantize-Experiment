@@ -99,7 +99,7 @@ else:
     
 prev_nr_active_tiles = nr_active_tiles
 
-if args.repos_only:
+if not args.repos_only:
     print("Stopping experiment-launcher.service ... ")
     playbook_path = os.path.join(config.PLAYBOOK_DIR, "manage-service.yaml")
 
