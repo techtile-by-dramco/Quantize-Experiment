@@ -12,7 +12,7 @@ heartbeat_interval: 10
 
 # Tile settings
 #tiles: "segmentB segmentF"
-tiles: "D05 D06 D07 D08 D09 D10"    # group name, single tile, or space-separated list
+tiles: "D06"    # group name, single tile, or space-separated list
 #tiles: "A05 A06 A07 A08 A09 A10"    # group name, single tile, or space-separated list
 
 extra_packages:                     # list of extra packages to be installed on the tiles' rpi's

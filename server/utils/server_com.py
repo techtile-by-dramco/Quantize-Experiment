@@ -6,12 +6,13 @@ import threading
 from datetime import datetime, timedelta
 
 class Server:
-    def __init__(self, bind="tcp://*:5678", heartbeat_timeout=10):
+    def __init__(self, bind="tcp://*:5678", heartbeat_timeout=10, silent=False):
         self.ctx = zmq.Context()
         self.sock = self.ctx.socket(zmq.ROUTER)
         self.sock.bind(bind)
         self.clients = {}
         self.heartbeat_timeout = heartbeat_timeout
+        self.silent = silent
         self.running = True
         self.thread = None
 
@@ -81,9 +82,11 @@ class Server:
 
                     # Handle messages
                     if msg_type == "heartbeat":
-                        print(f"[HEARTBEAT] {identity.decode()}")
+                        if not self.silent:
+                            print(f"[HEARTBEAT] {identity.decode()}")
                     elif msg_type == "response":
-                        print(f"[RESPONSE] {identity.decode()}: {msg_payload}")
+                        if not self.silent:
+                            print(f"[RESPONSE] {identity.decode()}: {msg_payload}")
 
                 self.purge_dead()
 
@@ -100,10 +103,23 @@ class Server:
             if now - info["last_seen"] > timedelta(seconds=self.heartbeat_timeout):
                 dead.append(cid)
         for cid in dead:
-            print(f"[TIMEOUT] Removing client {cid.decode()}")
+            if not self.silent:
+                print(f"[TIMEOUT] Removing client {cid.decode()}")
             del self.clients[cid]
                 
-    def print_clients(self):
-        print("connected clients:")
-        for cid, info in list(self.clients.items()):
-            print(cid, "- last seen:", info["last_seen"])
+    def print_clients(self, short=False):
+        if len(self.clients) == 0:
+            print("no connected clients")
+        else:
+            if short:
+                cids = sorted(self.clients)
+                cidstr = ""
+                for cid in cids:
+                    if len(cidstr) > 0:
+                        cidstr += " "
+                    cidstr += cid.decode();
+                print(cidstr)
+            else:
+                print("connected clients:")
+                for cid, info in list(self.clients.items()):
+                    print(cid, "- last seen:", info["last_seen"])

@@ -2,7 +2,7 @@ from utils.server_com import Server
 import signal
 import time
 
-server = Server(heartbeat_timeout=20)
+server = Server(heartbeat_timeout=20, silent=False)
 
 def handle_signal(signum, frame):
     print("\nReceived signal, stopping server...")
@@ -18,8 +18,8 @@ if __name__ == "__main__":
     # Main thread idle loop
     try:
         while server.running:
-            #server.print_clients()
-            time.sleep(5)   # do whatever else you want here
+            line = input("Enter something: ")
+            server.broadcast("sync", line)
     except KeyboardInterrupt:
         pass
 
