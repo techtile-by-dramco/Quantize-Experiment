@@ -1,12 +1,18 @@
 # Experiment settings
 
 # Experiment repository
-experiment_repo: "demo-experiment"  # github repo name
+experiment_repo: "geometry-based-wireless-power-transfer"  # github repo name
 organisation: "techtile-by-dramco"  # github org
+
+# Server settings
+server:
+  host: "techtile-geof.local"
+  port: 5678
+heartbeat_interval: 5
 
 # Tile settings
 #tiles: "segmentB segmentF"
-tiles: "ceiling"                   # group name, single tile, or space-separated list
+tiles: "D06"                   # group name, single tile, or space-separated list
 #tiles: "A05 A06 A07 A08 A09 A10"    # group name, single tile, or space-separated list
 
 extra_packages:                     # list of extra packages to be installed on the tiles' rpi's
@@ -15,22 +21,10 @@ extra_packages:                     # list of extra packages to be installed on 
   - python3-zmq
 
 # Name of the script to run on the clients (make sure it is in the <your-repo>/client folder)
-client_script_name: "tx-waveforms.py"
+client_script_name: "run-client.py"
 client_script_args:
-  - "--args"
-  - "type=b200" 
-  - "--freq"
-  - "920e6"
-  - "--rate"
-  - "1e6"
-  - "--duration"
-  - "1e6"
-  - "--channels"
-  - "0"
-  - "--wave-ampl"
-  - "0.8"
-  - "--gain"
-  - "80"
+  - "--config-file"
+  - "/home/pi/geometry-based-wireless-power-transfer/experiment-settings.yaml"
 
 # Server script behaviour
 test_connectivity: False             # set True if you want to test tile connectivity before continuing.
