@@ -36,7 +36,7 @@ class Client:
         self.messaging = self.context.socket(zmq.DEALER)
         self.messaging.setsockopt(zmq.IDENTITY, self.client_id)
 
-        self.sync = self.ctx.socket(zmq.SUB)
+        self.sync = self.context.socket(zmq.SUB)
         self.sync.setsockopt_string(zmq.SUBSCRIBE, "")  # subscribe to all topics
 
         # Robust reconnection handling

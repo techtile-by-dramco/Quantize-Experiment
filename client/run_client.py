@@ -3,6 +3,7 @@ import signal
 import time
 import sys
 import argparse
+from datetime import datetime, timezone
 
 parser = argparse.ArgumentParser(
     description="Run client."
@@ -23,7 +24,8 @@ def handle_ping(command, args):
 
 def handle_custom(command, args):
     print("Received sync command:", command, args)
-    client.send("ack", "got sync")
+    ts = datetime.now(timezone.utc)
+    client.send("ack", ts)
 
 def handle_signal(signum, frame):
     print("\nStopping client...")

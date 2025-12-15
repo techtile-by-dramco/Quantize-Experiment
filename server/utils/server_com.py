@@ -155,12 +155,12 @@ class Server:
 
         self.messaging.send_multipart(frames)
 
-def broadcast(self, msg_type, *payload_frames):
-    frames = [msg_type.encode()]
+    def broadcast(self, msg_type, *payload_frames):
+        frames = [msg_type.encode()]
 
-    for f in payload_frames:
-        if isinstance(f, str):
-            f = f.encode()
-        frames.append(f)
+        for f in payload_frames:
+            if isinstance(f, str):
+                f = f.encode()
+            frames.append(f)
 
-    self.sync.send_multipart(frames)
+        self.sync.send_multipart(frames)

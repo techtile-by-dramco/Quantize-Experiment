@@ -36,8 +36,8 @@ if __name__ == "__main__":
     # Main thread idle loop
     try:
         while server.running:
-            sleep(30)
-            server.broadcast("sync", line)
+            time.sleep(30)
+            server.broadcast("sync", "sync message payload")
     except KeyboardInterrupt:
         pass
 
