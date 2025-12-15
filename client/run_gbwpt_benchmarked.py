@@ -89,7 +89,7 @@ client = None
 got_sync = False
 
 
-def handle_tx_start(command, args):
+def handle_sync(command, args):
     print("Received SYNC command:", command, args)
     
     global got_sync
@@ -106,7 +106,10 @@ signal.signal(signal.SIGINT, handle_signal)
 signal.signal(signal.SIGTERM, handle_signal)
 
 CLOCK_TIMEOUT = 1000  # 1000mS timeout for external clock locking
-
+REF_RX_CH = FREE_TX_CH = 0
+LOOPBACK_RX_CH = LOOPBACK_TX_CH = 1
+logger.debug("\nPLL REF → CH0 RX\nCH1 TX → CH1 RX\nCH0 TX →")
+    
 def setup_usrp_clock(usrp, clock_src, num_mboards):
     usrp.set_clock_source(clock_src)
 

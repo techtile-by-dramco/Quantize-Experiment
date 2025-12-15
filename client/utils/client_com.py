@@ -172,12 +172,12 @@ class Client:
         # Default built-in handlers
         if command == "ping":
             try:
-                self.socket.send_multipart([b"pong", b"ok"], zmq.NOBLOCK)
+                self.messaging.send_multipart([b"pong", b"ok"], zmq.NOBLOCK)
             except zmq.Again:
                 pass
         else:
             try:
-                self.socket.send_multipart([b"error", b"unknown_command"], zmq.NOBLOCK)
+                self.messaging.send_multipart([b"error", b"unknown_command"], zmq.NOBLOCK)
             except zmq.Again:
                 pass
 
