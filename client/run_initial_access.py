@@ -7,27 +7,25 @@ from datetime import datetime, timezone, timedelta
 import uhd
 import numpy as np
 
-
-frequency = 920e6
-channel = 0
-gain = 80
-rate = 250e3
-duration = 10
-
-
 """Parse the command line arguments"""
 parser = argparse.ArgumentParser()
 parser.add_argument("--config-file", type=str)
 
 args = parser.parse_args()
 
+# Read experiment settings
+with open(args.config_file, "r") as f:
+    experiment_settings = yaml.safe_load(f)
+    
+frequency = experiment_settings.get("frequency", 920e6)
+channel = experiment_settings.get("channel", 0)
+gain = experiment_settings.get("gain", 80)
+rate = experiment_settings.get("rate", 250e3)
+duration = experiment_settings.get("duration", 10)
+
+
 client = None 
 got_start = False
-
-
-
-def handle_ping(command, args):
-    print("Received PING event:", command, args)
 
 
 def handle_tx_start(command, args):
@@ -154,4 +152,3 @@ if __name__ == "__main__":
     client.stop()
     client.join()
     print("Client terminated.")
-    sys.exit(0)

@@ -56,7 +56,7 @@ if __name__ == "__main__":
     server.start()   # <-- non-blocking
     print("Server running in background thread.")
 
-    duration = 10
+    duration = experiment_settings.get("duration", 10)
 
     # Main thread idle loop
     try:
