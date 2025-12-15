@@ -14,7 +14,12 @@
 #       Created: 2025-12-12
 #        Author: Geoffrey Ottoy
 # 
-#   Description: 
+#   Description: This script coordinates a distributed experiment by running
+#     a background server that tracks a set of target hosts and their trans-
+#     mission state. It waits until all expected hosts are connected and have
+#     completed their current tx phase, then broadcasts a synchronized 
+#     “tx-start” command to initiate the next transmission round. This process
+#     repeats until the server is shut down.
 #
 
 from utils.server_com import Server
@@ -102,7 +107,6 @@ def handle_tx_done(from_host, args):
 # ---------------------------------------------------------
 # Main execution block
 # ---------------------------------------------------------
-if __name__ == "__main__":
 if __name__ == "__main__":
     # Register the "tx-done" callback with the server
     server.on("tx-done", handle_tx_done)

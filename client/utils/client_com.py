@@ -22,7 +22,7 @@ class Client:
 
         # Derive ID from hostname
         hostname = socket.gethostname()
-        m = re.match(r"rpi-(.+)", hostname)
+        m = re.match(r"rpi-(.+)", hostname, re.IGNORECASE)
         if not m:
             raise ValueError(f"Hostname '{hostname}' does not match expected pattern 'rpi-<ID>'")
         self.client_id = m.group(1).encode()
