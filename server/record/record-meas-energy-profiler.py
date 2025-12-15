@@ -1,104 +1,136 @@
-from lib.ep import RFEP
-
 # ****************************************************************************************** #
 #                                       IMPORTS / PATHS                                      #
 # ****************************************************************************************** #
 
-# *** Includes ***
 from Positioner import PositionerClient
 from TechtilePlotter.TechtilePlotter import TechtilePlotter
-
 import os
-from lib.yaml_utils import read_yaml_file
 from time import sleep, time
 import numpy as np
 import zmq
+import sys
 
+# ****************************************************************************************** #
+#                                           CONFIG                                           #
+# ****************************************************************************************** #
 
-# Get the current directory of the script
-SAVE_EVERY = 1.0 * 60
+SAVE_EVERY = 60.0  # seconds
+PREFIX = "quasi_multi_tone"
+TIMESTAMP = round(time())
+
+# -------------------------------------------------
+# Directory and file names
+# -------------------------------------------------
 server_dir = os.path.dirname(os.path.abspath(__file__))
+project_dir = os.path.dirname(server_dir)
 
-print(f"Server dir: {server_dir}")
+# -------------------------------------------------
+# lib imports
+# -------------------------------------------------
+PROJECT_ROOT = os.path.dirname(project_dir)
+sys.path.insert(0, PROJECT_ROOT)
+from lib.yaml_utils import read_yaml_file
+from lib.ep import RFEP
 
-config = read_yaml_file(f"{server_dir}\config.yml")
-positioner = PositionerClient(config=config["positioning"], backend="zmq")
-rfep = RFEP(config["ep"]["ip"], config["ep"]["port"])
+# -------------------------------------------------
+# config file
+# -------------------------------------------------
+settings = read_yaml_file("experiment-settings.yaml")
 
-unique_id = 5  # TODO ADD to config file YAML
+# -------------------------------------------------
+# Data directory
+# -------------------------------------------------
+save_dir = os.path.abspath(os.path.join(server_dir, "../../data"))
+os.makedirs(save_dir, exist_ok=True)
 
-# Start the positioner
-positioner.start()
+# ****************************************************************************************** #
+#                                      INITIALIZATION                                        #
+# ****************************************************************************************** #
 
-# Setup ZeroMQ PUB socket
+positioner = PositionerClient(config=settings["positioning"], backend="zmq")
+rfep = RFEP(settings["ep"]["ip"], settings["ep"]["port"])
+
 context = zmq.Context()
 iq_socket = context.socket(zmq.PUB)
-iq_socket.bind(f"tcp://*:{50001}")
-
-
-def wait_till_go_from_server(ip="10.128.48.13"):
-
-    global meas_id, file_open, data_file, file_name
-    # Connect to the publisher's address
-    print("Connecting to server %s.", ip)
-    sync_socket = context.socket(zmq.SUB)
-    sync_socket.connect(f"tcp://{ip}:{5557}")
-    # Subscribe to topics
-    sync_socket.subscribe("")
-
-    # Receives a string format message
-    print("Waiting on SYNC from server %s.", ip)
-
-    meas_id, unique_id = sync_socket.recv_string().split(" ")
-
-    print(meas_id)
-
-    sync_socket.close()
-
-    return meas_id, unique_id
-
+iq_socket.bind("tcp://*:50001")
 
 plt = TechtilePlotter(realtime=True)
-# meas_id, unique_id = wait_till_go_from_server()
-# sleep(29.0)  # wake-up 10 seconds before rover starts to move
-
-# start to measure for XX long
-start = time()
 
 positions = []
 values = []
+last_save = 0
 
-last_save = -1
 
-while True:
+def save_data():
+    """Safely save measurement data to disk."""
+    print("Saving data...")
+    np.save(os.path.join(save_dir, f"{TIMESTAMP}_{PREFIX}_positions.npy"), positions)
+    np.save(os.path.join(save_dir, f"{TIMESTAMP}_{PREFIX}_values.npy"), values)
+    print("Data saved.")
 
-    d = rfep.get_data()
-    pos = positioner.get_data()
 
-    if d is not None:
-        print(d)
-        positions.append(pos)
-        print(pos)
-        values.append(d) 
-        plt.measurements_rt(pos.x, pos.y, pos.z, d.pwr_pw / 10**6)  # in uW
-    sleep(0.1)
+# ****************************************************************************************** #
+#                                           MAIN                                             #
+# ****************************************************************************************** #
 
-    if last_save + SAVE_EVERY < time():
+try:
+    print("Starting positioner and RFEP...")
+    positioner.start()
 
-        # Ensure folder exists
-        save_dir = f"{server_dir}/../../data"
-        os.makedirs(save_dir, exist_ok=True)
+    start_time = time()
 
-        print(f"Save path: {save_dir}/positions-{unique_id}.npy")
+    while True:
+        d = rfep.get_data()
+        pos = positioner.get_data()
 
-        np.save(arr=positions, file=f"{save_dir}/positions-{unique_id}.npy")
-        np.save(arr=values, file=f"{save_dir}/values-{unique_id}.npy")
+        if d is not None and pos is not None:
+            positions.append(pos)
+            values.append(d)
 
-        last_save = time()
+            plt.measurements_rt(
+                pos.x,
+                pos.y,
+                pos.z,
+                d.pwr_pw / 1e6  # µW
+            )
 
-print("Ctrl+C pressed. Exiting loop and saving...")
-# meas_name = f"bf-ceiling-grid-20241105-70db-tx"
-np.save(arr=positions, file=f"../data/positions-{unique_id}")
-np.save(arr=values, file=f"../data/values-{unique_id}")
-positioner.stop()
-rfep.stop()
+        # Periodic autosave
+        if time() - last_save >= SAVE_EVERY:
+            save_data()
+            last_save = time()
+
+        sleep(0.1)
+
+except KeyboardInterrupt:
+    print("\nCtrl+C received. Stopping measurement...")
+
+except Exception as e:
+    print("Unexpected error:", e)
+    raise
+
+finally:
+    # ****************************************************************************************** #
+    #                                           CLEANUP                                          #
+    # ****************************************************************************************** #
+    print("Cleaning up...")
+
+    try:
+        save_data()
+    except Exception as e:
+        print("Failed to save data on exit:", e)
+
+    try:
+        positioner.stop()
+    except Exception:
+        pass
+
+    try:
+        rfep.stop()
+    except Exception:
+        pass
+
+    iq_socket.close()
+    context.term()
+
+    print("Shutdown complete.")
+    sys.exit(0)

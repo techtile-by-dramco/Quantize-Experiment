@@ -19,8 +19,8 @@ frequency: 920e6
 channel: 0
 gain: 80
 rate: 250e3
-duration : 3600                       # time span over which fases are kept constant
-#duration : 10                       # time span over which fases are kept constant (run_adaptive_single_tone)
+duration : 3600                      # time span over which phases are kept constant
+#duration : 10                       # time span over which phases are kept constant (run_adaptive_single_tone)
 
 extra_packages:                     # list of extra packages to be installed on the tiles' rpi's
   - python3-numpy
@@ -37,3 +37,34 @@ client_script_args:
 # Server script behaviour
 test_connectivity: False             # set True if you want to test tile connectivity before continuing.
 halt_on_connectivity_failure: False  # set False if you want to continue with only the active tiles
+
+# Energy Profiler settings
+ep:
+  csv_header:
+  - timestamp
+  - buffer_voltage_mv
+  - resistance
+  - pwr_pw
+  enabled: true
+  ip: 192.108.2.45 #ttrpi5.local #192.108.2.45 #TTRPI5.local
+  port: 5556
+  protocol: zmq
+
+# Positioning settings
+positioning:
+  csv_header:
+  - x
+  - y
+  - z
+  - utc
+  - rm
+  enabled: false
+  ip: 192.108.0.13
+  port: 5556
+  protocol: zmq
+  system: QUALYSIS
+  xaxisoffset: 0
+  yaxisoffset: 0
+  zaxisoffset: 0
+  wanted_body: "ep"
+  capture_time_per_pos: 0.4 # in seconds only for direct method
