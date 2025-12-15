@@ -18,7 +18,7 @@ class Client:
         sync_port = server_settings.get("sync_port", "")
         self.messaging_endpoint = f"tcp://{host}:{messaging_port}"
         self.sync_endpoint = f"tcp://{host}:{sync_port}"
-        self.heartbeat_interval = cfg.get("heartbeat_interval", 5)
+        self.heartbeat_interval = experiment_settings.get("heartbeat_interval", 5)
 
         # Derive ID from hostname
         hostname = socket.gethostname()

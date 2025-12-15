@@ -36,7 +36,7 @@ if __name__ == "__main__":
     # Main thread idle loop
     try:
         while server.running:
-            line = input("Enter something: ")
+            sleep(30)
             server.broadcast("sync", line)
     except KeyboardInterrupt:
         pass

@@ -8,10 +8,10 @@ from datetime import datetime, timedelta
 class Server:
     def __init__(self, msg_port="5678", sync_port="5679", heartbeat_timeout=10, silent=False):
         self.context = zmq.Context()
-        self.messaging = self.context.messaginget(zmq.ROUTER)
-        self.messaging.bind("tcp://*:" + msg_port)
+        self.messaging = self.context.socket(zmq.ROUTER)
+        self.messaging.bind(f"tcp://*:{msg_port}")
         self.sync = self.context.socket(zmq.PUB)
-        self.sync.bind("tcp://*:" + sync_port)
+        self.sync.bind(f"tcp://*:{sync_port}")
         self.clients = {}
         self.heartbeat_timeout = heartbeat_timeout
         self.silent = silent
