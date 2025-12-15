@@ -115,7 +115,7 @@ if __name__ == "__main__":
     usrp_arg_string = f"-a \"type=b200\" -f {frequency} -c {channel} --gain {gain} -d {duration} --noip --rate {rate}" 
     usrp = uhd.usrp.MultiUSRP(usrp_arg_string)
     
-    setup_usrp_clock(usrp, "interal", usrp.get_num_mboards())
+    setup_usrp_clock(usrp, "internal", usrp.get_num_mboards())
     setup_usrp_pps(usrp, "external")
 
     usrp.set_tx_rate(rate, channel)
