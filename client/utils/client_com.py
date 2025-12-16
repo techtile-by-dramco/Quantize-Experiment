@@ -29,6 +29,7 @@ class Client:
         # Derive ID from hostname
         _hostname = socket.gethostname()
         m = re.match(r"rpi-(.+)", _hostname, re.IGNORECASE)
+        # TODO stop because no valid hostname, we cannot continue
         if not m:
             raise ValueError(
                 f"Hostname '{_hostname}' does not match expected pattern 'rpi-<ID>'"
