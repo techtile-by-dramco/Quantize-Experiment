@@ -140,6 +140,13 @@ if __name__ == "__main__":
     # client.on("tx-start", handle_tx_start)
     # client.start()
     # print("Client running...")
+
+    try:
+        tx(duration, tx_streamer, rate, [channel])
+    except KeyboardInterrupt:
+        pass
+
+    print("Client terminated.")
     
     # try:
     #     while client.running:
