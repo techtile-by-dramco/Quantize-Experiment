@@ -27,28 +27,28 @@ except ValueError as e:
     print("Could not read all settings:", e)
     sys.exit(-1)
 
-client = None 
-got_start = False
+# client = None 
+# got_start = False
 
 
-def handle_tx_start(command, args):
-    print("Received tx-start command:", command, args)
+# def handle_tx_start(command, args):
+#     print("Received tx-start command:", command, args)
     
-    global got_start
-    global duration
+#     global got_start
+#     global duration
     
-    got_start = True
-    _, _, val_str = args[0].partition("=")
-    duration = int(val_str)
+#     got_start = True
+#     _, _, val_str = args[0].partition("=")
+#     duration = int(val_str)
     
 
-def handle_signal(signum, frame):
-    print("\nStopping client...")
-    client.stop()
+# def handle_signal(signum, frame):
+#     print("\nStopping client...")
+#     client.stop()
 
 
-signal.signal(signal.SIGINT, handle_signal)
-signal.signal(signal.SIGTERM, handle_signal)
+# signal.signal(signal.SIGINT, handle_signal)
+# signal.signal(signal.SIGTERM, handle_signal)
 
 CLOCK_TIMEOUT = 1000  # 1000mS timeout for external clock locking
 
@@ -136,22 +136,22 @@ if __name__ == "__main__":
       
     tx_streamer = config_streamer([channel], usrp)
 
-    client = Client(args.config_file)
-    client.on("tx-start", handle_tx_start)
-    client.start()
-    print("Client running...")
+    # client = Client(args.config_file)
+    # client.on("tx-start", handle_tx_start)
+    # client.start()
+    # print("Client running...")
     
-    try:
-        while client.running:
-            if got_start:
-                got_start = False
-                tx(duration, tx_streamer, rate, [channel])
-                client.send("tx-done")
-            else:
-                time.sleep(0.1)
-    except KeyboardInterrupt:
-        pass
+    # try:
+    #     while client.running:
+    #         if got_start:
+    #             got_start = False
+    #             tx(duration, tx_streamer, rate, [channel])
+    #             client.send("tx-done")
+    #         else:
+    #             time.sleep(0.1)
+    # except KeyboardInterrupt:
+    #     pass
 
-    client.stop()
-    client.join()
-    print("Client terminated.")
+    # client.stop()
+    # client.join()
+    # print("Client terminated.")
