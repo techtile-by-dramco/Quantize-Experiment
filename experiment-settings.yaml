@@ -12,7 +12,7 @@ server:
 heartbeat_interval: 10
 
 # Tile settings
-tiles: "D06"                    # group name, single tile, or space-separated list
+tiles: "ceiling"                    # group name, single tile, or space-separated list
 
 # usrp settings
 frequency: 920e6
