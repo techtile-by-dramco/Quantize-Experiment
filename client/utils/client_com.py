@@ -6,7 +6,8 @@ import time
 import yaml
 import zmq
 
-from client_logger import get_logger
+# from client_logger import get_logger
+from client_logger import *
 
 
 class Client:
