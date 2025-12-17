@@ -1012,8 +1012,8 @@ def main():
         phi_LB = result_queue.get()
 
         # Print loopback phase
-        logger.info("Phase pilot reference signal in rad: %s", phi_LB)
-        logger.info("Phase pilot reference signal in degrees: %s", np.rad2deg(phi_LB))
+        logger.info("Phase LB reference signal in rad: %s", phi_LB)
+        logger.info("Phase LB reference signal in degrees: %s", np.rad2deg(phi_LB))
 
         start_next_cmd += cmd_time + 2.0  # Schedule next command
 
@@ -1026,7 +1026,7 @@ def main():
                 phases_dict = yaml.safe_load(phases_yaml)
                 if HOSTNAME in phases_dict.keys():
                     phi_cable = phases_dict[HOSTNAME]
-                    logger.debug(f"Applying phase correction: {phi_cable}")
+                    logger.debug(f"Applying cable phase correction: {phi_cable}")
                 else:
                     logger.error("Phase offset not found in ref-RF-cable.yml")
             except yaml.YAMLError as exc:
@@ -1041,7 +1041,7 @@ def main():
                 phases_dict = yaml.safe_load(phases_yaml)
                 if HOSTNAME in phases_dict.keys():
                     phi_cable = phases_dict[HOSTNAME]
-                    logger.debug(f"Applying phase correction: {phi_offset}")
+                    logger.debug(f"Applying BF phase: {phi_offset}")
                 else:
                     logger.error("Phase offset not found in tx-phases-benchmark.yml")
             except yaml.YAMLError as exc:
@@ -1057,7 +1057,10 @@ def main():
         alive_socket.send_string(f"{HOSTNAME} TX")
         alive_socket.close()
 
-        phase_corr=phi_LB - np.deg2rad(phi_cable) + np.deg2rad(phi_offset)
+
+        logger.info("LB: %f, CABLE: %f, BF PHASE: %f", np.rad2deg(phi_LB), phi_cable, phi_offset)
+
+        phase_corr= phi_LB - np.deg2rad(phi_cable) + np.deg2rad(phi_offset)
         logger.info("Phase correction in rad: %s", phase_corr)
         logger.info("Phase correction in degrees: %s", np.rad2deg(phase_corr))
 
@@ -1066,7 +1069,7 @@ def main():
             tx_streamer,
             quit_event,
             # phase_corr=phi_LB + phi_P + np.deg2rad(phi_cable),
-            phase_corr=phi_LB - np.deg2rad(phi_cable) + np.deg2rad(phi_offset),
+            phase_corr=phase_corr,
             at_time=start_next_cmd,
             long_time=True, # Set long_time True if you want to transmit longer than 10 seconds
         )
