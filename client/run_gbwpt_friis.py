@@ -50,7 +50,7 @@ iq_socket.bind(f"tcp://*:{50001}")
 
 HOSTNAME = socket.gethostname()[4:]
 file_open = False
-server_ip = None  # populated by settings.yml
+# server_ip = None  # populated by settings.yml
 
 # =============================================================================
 #                           Custom Log Formatter
