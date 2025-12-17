@@ -1060,7 +1060,7 @@ def main():
 
         logger.info("LB: %f, CABLE: %f, BF PHASE: %f", np.rad2deg(phi_LB), phi_cable, phi_BF)
 
-        phase_corr= phi_LB - np.deg2rad(phi_cable) + np.deg2rad(phi_BF)
+        phase_corr= phi_LB - (2*np.pi-np.deg2rad(phi_cable)) + np.deg2rad(phi_BF)
         logger.info("Phase correction in rad: %s", phase_corr)
         logger.info("Phase correction in degrees: %s", np.rad2deg(phase_corr))
 
