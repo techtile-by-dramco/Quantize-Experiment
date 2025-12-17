@@ -15,6 +15,20 @@ DATA_DIR = "../data"
 PREFIX = "quasi_multi_tone"
 TIMESTAMP = 1765806131
 
+to_plot = ["20241107114752", "20241107124328", "20241107091548"]
+cmap = "inferno"
+
+wavelen = 3e8 / 920e6
+zoom_val = 2
+
+# Grid cell aggregation functions
+STAT_FUNCS = {
+    "mean": np.mean,
+    "median": np.median,
+    "max": np.max,
+    "min": np.min,
+}
+
 # -------------------------------------------------
 # Directory and file names
 # -------------------------------------------------
@@ -22,195 +36,160 @@ TIMESTAMP = 1765806131
 server_dir = os.path.dirname(os.path.abspath(__file__))
 print(f"Server dir: {server_dir}")
 
-# -------------------------------------------------
-# lib imports
-# -------------------------------------------------
 PROJECT_ROOT = os.path.dirname(server_dir)
 sys.path.insert(0, PROJECT_ROOT)
+
 from lib.yaml_utils import read_yaml_file
 from lib.ep import RFEP
 
-# Data directory
 DATA_DIR = os.path.abspath(os.path.join(server_dir, "../data"))
 
+
 # -------------------------------------------------
-to_plot = ["20241107114752", "20241107124328","20241107091548"]  # 20241107124328 20241107091548
-
-cmap = "inferno"
-
-log_heatmap = np.zeros(len(to_plot)).tolist()
-
-wavelen = 3e8 / 920e6
-
-for i, tp in enumerate(to_plot):
-
-    positions = np.load(f"{DATA_DIR}/{TIMESTAMP}_{PREFIX}_positions.npy", allow_pickle=True)
-    o_values = np.load(f"{DATA_DIR}/{TIMESTAMP}_{PREFIX}_values.npy", allow_pickle=True)
-
-    print(f"Processing {len(positions)} samples")
-
-    # valid_values_idx = values>-90
-
-    # positions = positions[valid_values_idx]
-    # values = values[valid_values_idx]
-
-    print("CHANGE OF X POSITION DUE TO QTM position not same as antenna position")
-    y_positions = [p.y+0.1 for p in positions]
-
-    temp_pos_list = PositionerValues(positions)
-
-    positions_list = PositionerValues.from_xyz(
-        temp_pos_list.get_x_positions(), y_positions, temp_pos_list.get_z_positions()
-    )
-
-    values = [v.pwr_pw / 10**6 for v in o_values]
-
-    print(f"MAX POWER: {np.max(values):.2f} uW")
-
-    grid_pos_ids, xi, yi = positions_list.group_in_grids(
-        0.05, min_x=2.7, max_x=3.9, min_y=1.25, max_y=2.4
-    )
-    heatmap = np.zeros(shape=(len(yi), len(xi)))
+def compute_heatmap(values, grid_pos_ids, reducer):
+    """
+    values: 1D list/array with scalar values (same indexing as positions/o_values)
+    grid_pos_ids: [Nx][Ny] list of lists containing indices into values
+    reducer: np.mean / np.median / np.max / np.min
+    """
+    heatmap = np.full((len(grid_pos_ids), len(grid_pos_ids[0])), np.nan, dtype=float)
+    x_bf = None
+    y_bf = None
 
     for i_x, grid_along_y in enumerate(grid_pos_ids):
         for i_y, grid_along_xy_ids in enumerate(grid_along_y):
-            heatmap[i_x, i_y] = np.mean(
-                [values[_id] for _id in grid_along_xy_ids]
-            )
+            if len(grid_along_xy_ids) == 0:
+                continue
+
+            heatmap[i_x, i_y] = reducer([values[_id] for _id in grid_along_xy_ids])
+
+            # Keep your marker logic: cell containing sample id 0
             if 0 in grid_along_xy_ids:
                 x_bf = i_x
                 y_bf = i_y
 
-    zoom_val = 2
+    return heatmap, x_bf, y_bf
 
-    ue_position = Rectangle(
-        ((y_bf - 0.5) * zoom_val, (x_bf - 0.5) * zoom_val),
-        1,
-        1,
-        fill=False,
-        edgecolor="red",
-        lw=3,
-    )
 
-    fig, ax = plt.subplots()
-    plt.title(tp)
+def plot_heatmaps_for_stat(tp, heatmap, xi, yi, x_bf, y_bf, stat_name, cmap, zoom_val, wavelen):
+    # UE marker (only if available)
+    ue_position = None
+    if (x_bf is not None) and (y_bf is not None):
+        ue_position = Rectangle(
+            ((y_bf - 0.5) * zoom_val, (x_bf - 0.5) * zoom_val),
+            1,
+            1,
+            fill=False,
+            edgecolor="red",
+            lw=3,
+        )
+
     upsampled_heatmap = zoom(heatmap, zoom=zoom_val, order=1)
-    p = ax.imshow(upsampled_heatmap, cmap=cmap, origin="lower")
+
+    # -----------------------
+    # Linear plot (uW)
+    # -----------------------
+    fig, ax = plt.subplots()
+    ax.set_title(f"{tp} | {stat_name} | uW")
+    img_lin = ax.imshow(upsampled_heatmap, cmap=cmap, origin="lower")
+
     ax.set_xticks(
         zoom_val * np.arange(len(xi))[::4],
-        labels=[f"{(x-xi[0])/wavelen:.2f}" for x in xi][::4],
+        labels=[f"{(x - xi[0]) / wavelen:.2f}" for x in xi][::4],
     )
     ax.set_yticks(
         zoom_val * np.arange(len(yi))[::4],
-        labels=[f"{(y-yi[0])/wavelen:.2f}" for y in yi][::4],
+        labels=[f"{(y - yi[0]) / wavelen:.2f}" for y in yi][::4],
     )
-    ax.add_patch(ue_position)
-    cbar = fig.colorbar(p)
-    cbar.ax.set_ylabel("uW")
+
+    if ue_position is not None:
+        ax.add_patch(ue_position)
+
+    cbar = fig.colorbar(img_lin)
+    cbar.ax.set_ylabel(f"{stat_name} power [uW]")
+
     ax.set_xlabel("distance in wavelengths")
     ax.set_ylabel("distance in wavelengths")
     fig.tight_layout()
-    # plt.savefig(
-    #     f"../results/{tp}/heatmap-uW.png", bbox_inches="tight", transparent=True, dpi=600
-    # )
     plt.show()
 
+    # -----------------------
+    # Log plot (dB)
+    # NOTE: Keeps your original scaling idea; label is generic dB.
+    # -----------------------
     fig, ax = plt.subplots()
-    plt.title(tp)
-    upsampled_heatmap = zoom(heatmap, zoom=zoom_val, order=1)
-    plt.imshow(
-        10 * np.log10(upsampled_heatmap/10e3),  # /10e3 as it is expressed in uW to go to mW
+    ax.set_title(f"{tp} | {stat_name} | dB")
+
+    up = upsampled_heatmap.copy()
+    up[up <= 0] = np.nan  # protect log
+
+    img_db = ax.imshow(
+        10 * np.log10(up / 10e3),  # keep your original scaling
         vmin=None,
         vmax=None,
         cmap=cmap,
         origin="lower",
     )
-    plt.gca().set_xticks(
-        zoom_val * np.arange(len(xi))[::4],
-        labels=[f"{(x-xi[0])/wavelen:.2f}" for x in xi][::4],
-    )
-    plt.gca().set_yticks(
-        zoom_val * np.arange(len(yi))[::4],
-        labels=[f"{(y-yi[0])/wavelen:.2f}" for y in yi][::4],
-    )
-    # ax.add_patch(Rectangle((y_bf-0.5, x_bf-0.5), 1, 1, fill=False, edgecolor="red", lw=3))
-    plt.colorbar(label="dBm")
-    # cbar.ax.set_ylabel("dBm")
-    plt.xlabel("distance in wavelengths")
-    plt.ylabel("distance in wavelengths")
-    fig.tight_layout()
-    plt.show()
-    # plt.savefig(
-    #     f"../results/{tp}/heatmap-dBm.png",
-    #     bbox_inches="tight",
-    #     transparent=True,
-    #     dpi=600,
-    # )
 
-    exit()
-
-    values = [v.buffer_voltage_mv if v.buffer_voltage_mv<3000 else 0 for v in o_values]
-    heatmap = np.zeros(shape=(len(yi), len(xi)))
-    for i_x, grid_along_y in enumerate(grid_pos_ids):
-        for i_y, grid_along_xy_ids in enumerate(grid_along_y):
-            heatmap[i_x, i_y] = np.mean(
-                [values[_id] for _id in grid_along_xy_ids]
-            )
-            if 0 in grid_along_xy_ids:
-                x_bf = i_x
-                y_bf = i_y
-
-    fig, ax = plt.subplots()
-    plt.title(tp)
-    upsampled_heatmap = zoom(heatmap, zoom=zoom_val, order=1)
-    p = ax.imshow(upsampled_heatmap/1e3, cmap=cmap, vmin=1.2, origin="lower")
     ax.set_xticks(
         zoom_val * np.arange(len(xi))[::4],
-        labels=[f"{(x-xi[0])/wavelen:.2f}" for x in xi][::4],
+        labels=[f"{(x - xi[0]) / wavelen:.2f}" for x in xi][::4],
     )
     ax.set_yticks(
         zoom_val * np.arange(len(yi))[::4],
-        labels=[f"{(y-yi[0])/wavelen:.2f}" for y in yi][::4],
+        labels=[f"{(y - yi[0]) / wavelen:.2f}" for y in yi][::4],
     )
-    # ax.add_patch(
-    #     Rectangle((y_bf - 0.5, x_bf - 0.5), 1, 1, fill=False, edgecolor="red", lw=3)
-    # )
-    cbar = fig.colorbar(p)
-    cbar.ax.set_ylabel("V")
+
+    cbar = fig.colorbar(img_db)
+    cbar.ax.set_ylabel(f"{stat_name} power [dB]")
+
     ax.set_xlabel("distance in wavelengths")
     ax.set_ylabel("distance in wavelengths")
     fig.tight_layout()
     plt.show()
-    # plt.savefig(
-    #     f"../results/{tp}/heatmap-V.png", bbox_inches="tight", transparent=True, dpi=600
-    # )
 
-    fig, ax = plt.subplots()
-    plt.title(tp)
-    upsampled_heatmap[upsampled_heatmap<1750] = np.nan
-    p = ax.imshow(upsampled_heatmap / 1e3, cmap=cmap, origin="lower")
-    ax.set_xticks(
-        zoom_val * np.arange(len(xi))[::4],
-        labels=[f"{(x-xi[0])/wavelen:.2f}" for x in xi][::4],
-    )
-    ax.set_yticks(
-        zoom_val * np.arange(len(yi))[::4],
-        labels=[f"{(y-yi[0])/wavelen:.2f}" for y in yi][::4],
-    )
-    # ax.add_patch(
-    #     Rectangle((y_bf - 0.5, x_bf - 0.5), 1, 1, fill=False, edgecolor="red", lw=3)
-    # )
-    cbar = fig.colorbar(p)
-    cbar.ax.set_ylabel("V")
-    ax.set_xlabel("distance in wavelengths")
-    ax.set_ylabel("distance in wavelengths")
-    fig.tight_layout()
-    fig.show()
-    # plt.savefig(
-    #     f"../results/{tp}/heatmap-Vth.png",
-    #     bbox_inches="tight",
-    #     transparent=True,
-    #     dpi=600,
-    # )
 
-    plt.show()
+# -------------------------------------------------
+# MAIN
+# -------------------------------------------------
+for tp in to_plot:
+    positions = np.load(f"{DATA_DIR}/{TIMESTAMP}_{PREFIX}_positions.npy", allow_pickle=True)
+    o_values = np.load(f"{DATA_DIR}/{TIMESTAMP}_{PREFIX}_values.npy", allow_pickle=True)
+
+    print(f"Processing {len(positions)} samples for tp={tp}")
+
+    print("CHANGE OF X POSITION DUE TO QTM position not same as antenna position")
+    y_positions = [p.y + 0.1 for p in positions]
+
+    temp_pos_list = PositionerValues(positions)
+    positions_list = PositionerValues.from_xyz(
+        temp_pos_list.get_x_positions(), y_positions, temp_pos_list.get_z_positions()
+    )
+
+    # power in uW
+    values = np.array([v.pwr_pw / 1e6 for v in o_values], dtype=float)
+    print(f"MAX POWER (raw samples): {np.max(values):.2f} uW")
+
+    grid_pos_ids, xi, yi = positions_list.group_in_grids(
+        0.05, min_x=2.7, max_x=3.9, min_y=1.25, max_y=2.4
+    )
+
+    for stat_name, reducer in STAT_FUNCS.items():
+        heatmap, x_bf, y_bf = compute_heatmap(values, grid_pos_ids, reducer)
+        print(f"[{tp}] {stat_name}: max(cell)={np.nanmax(heatmap):.2f} uW")
+
+        plot_heatmaps_for_stat(
+            tp=tp,
+            heatmap=heatmap,
+            xi=xi,
+            yi=yi,
+            x_bf=x_bf,
+            y_bf=y_bf,
+            stat_name=stat_name,
+            cmap=cmap,
+            zoom_val=zoom_val,
+            wavelen=wavelen,
+        )
+
+    # Uncomment if you want to stop after first tp
+    # exit()
