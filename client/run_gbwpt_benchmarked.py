@@ -50,7 +50,7 @@ iq_socket.bind(f"tcp://*:{50001}")
 
 HOSTNAME = socket.gethostname()[4:]
 file_open = False
-server_ip = None  # populated by settings.yml
+# server_ip = None  # populated by settings.yml
 
 # =============================================================================
 #                           Custom Log Formatter
@@ -907,6 +907,9 @@ def parse_arguments():
         required=False,
     )
 
+    parser.add_argument("--config-file", type=str)
+
+
     # Parse the command-line arguments
     args = parser.parse_args()
 
@@ -1065,7 +1068,7 @@ def main():
             # phase_corr=phi_LB + phi_P + np.deg2rad(phi_cable),
             phase_corr=phi_LB - np.deg2rad(phi_cable) + np.deg2rad(phi_offset),
             at_time=start_next_cmd,
-            long_time=False, # Set long_time True if you want to transmit longer than 10 seconds
+            long_time=True, # Set long_time True if you want to transmit longer than 10 seconds
         )
 
         print("DONE")

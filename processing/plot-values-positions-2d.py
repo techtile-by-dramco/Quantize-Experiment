@@ -12,8 +12,8 @@ import sys
 # -------------------------------------------------
 
 DATA_DIR = "../data"
-PREFIX = "gbwpt_friis"
-TIMESTAMP = 1765973300
+PREFIX = "gbwpt_smc2_old"
+TIMESTAMP = 1765977708
 
 to_plot = ["20241107114752", "20241107124328", "20241107091548"]
 cmap = "inferno"
@@ -177,6 +177,7 @@ for tp in to_plot:
 
     for stat_name, reducer in STAT_FUNCS.items():
         heatmap, x_bf, y_bf = compute_heatmap(values, grid_pos_ids, reducer)
+        print(x_bf, y_bf)
         print(f"[{tp}] {stat_name}: max(cell)={np.nanmax(heatmap):.2f} uW")
 
         plot_heatmaps_for_stat(
