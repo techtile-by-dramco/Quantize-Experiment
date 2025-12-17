@@ -12,8 +12,8 @@ import sys
 # -------------------------------------------------
 
 DATA_DIR = "../data"
-PREFIX = "quasi_multi_tone"
-TIMESTAMP = 1765962090
+PREFIX = "gbwpt_friis"
+TIMESTAMP = 1765973300
 
 to_plot = ["20241107114752", "20241107124328", "20241107091548"]
 cmap = "inferno"
@@ -112,6 +112,7 @@ def plot_heatmaps_for_stat(tp, heatmap, xi, yi, x_bf, y_bf, stat_name, cmap, zoo
     ax.set_ylabel("distance in wavelengths")
     fig.tight_layout()
     plt.show()
+    exit()
 
     # -----------------------
     # Log plot (dB)

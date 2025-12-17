@@ -17,7 +17,7 @@ import sys
 # ****************************************************************************************** #
 
 SAVE_EVERY = 60.0  # seconds
-PREFIX = "quasi_multi_tone"
+PREFIX = "gbwpt_friis"
 TIMESTAMP = round(time())
 
 # -------------------------------------------------

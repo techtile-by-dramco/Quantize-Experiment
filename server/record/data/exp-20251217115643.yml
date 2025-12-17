@@ -1,0 +1,47 @@
+experiment: 20251217115643
+num_subscribers: 42
+measurments:
+  - meas_id: 0
+    active_tiles:
+     - G06
+     - G07
+     - G09
+     - G08
+     - G05
+     - G10
+     - F05
+     - F06
+     - F08
+     - F07
+     - F10
+     - F09
+     - E06
+     - E05
+     - E07
+     - E08
+     - E10
+     - E09
+     - D06
+     - D05
+     - D08
+     - D07
+     - D09
+     - C05
+     - D10
+     - C06
+     - C07
+     - C09
+     - C08
+     - C10
+     - B05
+     - B06
+     - B08
+     - B07
+     - B09
+     - B10
+     - A05
+     - A06
+     - A07
+     - A08
+     - A09
+     - A10
