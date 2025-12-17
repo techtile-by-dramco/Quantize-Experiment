@@ -965,7 +965,7 @@ def main():
         quit_event = threading.Event()
 
         margin = 5.0                     # Safety margin for timing
-        cmd_time = CAPTURE_TIME + margin # Duration for one measurement step
+        cmd_time = margin # Duration for one measurement step
         start_next_cmd = cmd_time        # Timestamp for the next scheduled command
 
         # Queue to collect measurement results and communicate between threads
@@ -1060,7 +1060,7 @@ def main():
 
         logger.info("LB: %f, CABLE: %f, BF PHASE: %f", np.rad2deg(phi_LB), phi_cable, phi_BF)
 
-        phase_corr= phi_LB - (2*np.pi-np.deg2rad(phi_cable)) + np.deg2rad(phi_BF)
+        phase_corr= phi_LB + np.deg2rad(phi_cable) + np.deg2rad(phi_BF)
         logger.info("Phase correction in rad: %s", phase_corr)
         logger.info("Phase correction in degrees: %s", np.rad2deg(phase_corr))
 
