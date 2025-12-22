@@ -16,10 +16,10 @@ LOOPBACK_TX_GAIN: !!float 50
 FREE_TX_GAIN: !!float 80  
 # Transmit gain when transmitting freely (not in loopback mode).
 
-LOOPBACK_RX_GAIN: !!float 48 #45  
+LOOPBACK_RX_GAIN: !!float 55 #45  
 # Receive gain for loopback tests, empirically determined.
 
-REF_RX_GAIN: !!float 48 #45   
+REF_RX_GAIN: !!float 55 #45   
 # Reference receiver gain, empirically determined.
 
 FREQ: !!float 920e6  
