@@ -20,20 +20,27 @@ import numpy as np
 
 def to_min_pi_plus_pi(angles, deg=True):
 
-    angles = np.asarray(angles)
+    # angles = np.asarray(angles)
 
-    thr = 180.0 if deg else np.pi
-    rotate = 360.0 if deg else 2 * np.pi
+    # thr = 180.0 if deg else np.pi
+    # rotate = 360.0 if deg else 2 * np.pi
 
-    # ensure positive
-    idx = angles < 0.0
-    angles[idx] = angles[idx] + rotate
+    # # ensure positive
+    # idx = angles < 0.0
+    # angles[idx] = angles[idx] + rotate
 
-    # ensure betwen -180 and 180 or -pi and pi
-    idx = angles > thr
-    angles[idx] = angles[idx] - rotate
+    # # ensure betwen -180 and 180 or -pi and pi
+    # idx = angles > thr
+    # angles[idx] = angles[idx] - rotate
 
-    return angles
+    # return angles
+
+    angles = np.asarray(angles, dtype=float)
+
+    if deg:
+        return (angles + 180.0) % 360.0 - 180.0
+    else:
+        return (angles + np.pi) % (2.0 * np.pi) - np.pi
 
 
 f0 = 1e3
