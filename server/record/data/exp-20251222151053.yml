@@ -13,3 +13,5 @@ measurments:
      - F05
      - E06
      - E07
+  - meas_id: 2
+    active_tiles:
