@@ -31,3 +31,5 @@ measurments:
      - E07
      - F05
      - D05
+  - meas_id: 5
+    active_tiles:
