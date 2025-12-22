@@ -7,7 +7,7 @@ CLOCK_TIMEOUT: !!float 1000
 INIT_DELAY: !!float 0.2  
 # Initial delay of 200 ms before starting transmission.
 
-RATE: !!float 250e3  
+RATE: !!float 500e3 #250e3  
 # Transmission/sample rate in Hz (250 kHz).
 
 LOOPBACK_TX_GAIN: !!float 58 #50  
