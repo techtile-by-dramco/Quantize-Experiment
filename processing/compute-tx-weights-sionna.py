@@ -18,6 +18,14 @@ from sionna.rt import load_scene
 # ============================================================
 # CONFIG
 # ============================================================
+# Receiver location (single antenna RX)
+# target_location = np.array([3.181, 1.774, 0.266], dtype=np.float32)
+target_location = np.array(
+    [3.201299560546875, 1.70512451171875, 0.23005308532714844], dtype=np.float32
+)
+# Specular multipath control
+specular_order = 2  # start with LoS only
+
 
 positions_url = (
     "https://raw.githubusercontent.com/techtile-by-dramco/"
@@ -25,14 +33,9 @@ positions_url = (
     "techtile_antenna_locations.yml"
 )
 
-# Receiver location (single antenna RX)
-target_location = np.array([3.181, 1.774, 0.266], dtype=np.float32)
 
 # Narrowband frequency for CSI
 fc = 920e6  # Hz
-
-# Specular multipath control
-specular_order = 1  # start with LoS only
 
 
 # XML scene path
@@ -136,7 +139,7 @@ if specular_order == 0:
     scene = load_scene(None)
 else:
     scene = load_scene(str(xml_path))
-# 
+#
 
 # ============================================================
 # REQUIRED by Sionna RT (even for "single antennas"):

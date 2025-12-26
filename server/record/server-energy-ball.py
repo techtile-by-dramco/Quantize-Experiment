@@ -7,6 +7,7 @@ import zmq
 import time
 import sys
 import os
+import signal
 from datetime import datetime, UTC, timezone
 # from helper import *
 import numpy as np
@@ -79,9 +80,20 @@ from lib.ep import RFEP
 
 settings = read_yaml_file("experiment-settings.yaml")
 rfep = RFEP(settings["ep"]["ip"], settings["ep"]["port"])
+from Positioner import PositionerClient
+
+positioner = PositionerClient(config=settings["positioning"], backend="zmq")
+
+print(rfep.get_data())
+
 
 CAPTURE_POWER_TIME = 5
 prev_power = 0
+stop_requested = False
+
+def _handle_interrupt(signum=None, frame=None):
+    global stop_requested
+    stop_requested = True
 
 def send_sync():
     """
@@ -99,9 +111,13 @@ def send_sync():
     messages_received = 0
     new_msg_received = 0 
 
-    while messages_received < num_subscribers:
-        # Poll the socket for incoming messages with a 1-second timeout
-        _socks = dict(poller.poll(1000))
+    while messages_received < num_subscribers and not stop_requested:
+        try:
+            # Poll the socket for incoming messages with a 1-second timeout
+            _socks = dict(poller.poll(1000))
+        except KeyboardInterrupt:
+            _handle_interrupt()
+            return False
 
         # If some messages were received but no new message comes within WAIT_TIMEOUT, break
         if messages_received > 2 and time.time() - new_msg_received > WAIT_TIMEOUT:
@@ -136,6 +152,7 @@ def send_sync():
     # Broadcast synchronization message to all subscribers
     sync_socket.send_string(f"{meas_id} {unique_id}")  # str(meas_id)
     print(f"SYNC {meas_id}")
+    return True
 
 
 def collect_power(tx_time: float) -> float:
@@ -146,14 +163,19 @@ def collect_power(tx_time: float) -> float:
 
     start_time = time.time()
     print(f"Collecting power measurements for {CAPTURE_POWER_TIME} seconds...")
-    while CAPTURE_POWER_TIME > time.time() - start_time:
-        d = rfep.get_data()
-        if d is None:
-            continue
-        max_samples.append(d.pwr_pw)
+    try:
+        while CAPTURE_POWER_TIME > time.time() - start_time and not stop_requested:
+            d = rfep.get_data()
+            if d is None:
+                continue
+            max_samples.append(d.pwr_pw)
+    except KeyboardInterrupt:
+        _handle_interrupt()
 
     #take median of the max 10 power samples, median to avoid outliers
     max_samples = sorted(max_samples, reverse=True)[:10]
+    if not max_samples:
+        return 0.0
     return np.median(max_samples).item() # np.array to scalar 
 
 
@@ -168,9 +190,13 @@ def wait_till_tx_done(is_stronger: bool):
     max_starting_in = 0.0
     tx_updates = []
 
-    while messages_received < num_subscribers:
-        # Poll the socket for incoming messages with a 1-second timeout
-        socks = dict(poller.poll(1000))
+    while messages_received < num_subscribers and not stop_requested:
+        try:
+            # Poll the socket for incoming messages with a 1-second timeout
+            socks = dict(poller.poll(1000))
+        except KeyboardInterrupt:
+            _handle_interrupt()
+            return max_starting_in, tx_updates
 
         # If some messages were received but no new message comes within WAIT_TIMEOUT, break
         if messages_received > 2 and time.time() - new_msg_received > WAIT_TIMEOUT:
@@ -207,38 +233,58 @@ def wait_till_tx_done(is_stronger: bool):
             alive_socket.send_string(str(is_stronger))
     return max_starting_in, tx_updates
 
-with open(output_path, "w") as f:
-    # Write experiment metadata to the YAML file
-    f.write(f"experiment: {unique_id}\n")
-    f.write(f"num_subscribers: {num_subscribers}\n")
-    f.write("measurments:\n")
+def cleanup():
+    try:
+        sync_socket.close()
+        alive_socket.close()
+        data_socket.close()
+    except Exception:
+        pass
+    try:
+        context.term()
+    except Exception:
+        pass
 
-    while True:
-        # Wait for all subscribers to send a message
-        print(f"Waiting for {num_subscribers} subscribers to send a message...")
+try:
+    signal.signal(signal.SIGINT, _handle_interrupt)
+    with open(output_path, "w") as f:
+        # Write experiment metadata to the YAML file
+        f.write(f"experiment: {unique_id}\n")
+        f.write(f"num_subscribers: {num_subscribers}\n")
+        f.write("measurments:\n")
 
-        # Start a new measurement entry in the YAML file
-        f.write(f"  - meas_id: {meas_id}\n")
-        f.write("    active_tiles:\n")
+        while not stop_requested:
+            # Wait for all subscribers to send a message
+            print(f"Waiting for {num_subscribers} subscribers to send a message...")
 
-        # Track number of messages received from subscribers
-        send_sync()
-        stronger = False
-        f.write("    iterations:\n")
+            # Start a new measurement entry in the YAML file
+            f.write(f"  - meas_id: {meas_id}\n")
+            f.write("    active_tiles:\n")
 
-        for i in range(0, 100):
-            next_tx_in, tx_updates = wait_till_tx_done(is_stronger=stronger)
-            next_tx_time = time.time() + next_tx_in
+            # Track number of messages received from subscribers
+            if not send_sync():
+                break
+            stronger = False
+            f.write("    iterations:\n")
 
-            max_power = collect_power(next_tx_time)
+            for i in range(0, 100):
+                next_tx_in, tx_updates = wait_till_tx_done(is_stronger=stronger)
+                next_tx_time = time.time() + next_tx_in
 
-            stronger = max_power > prev_power
-            prev_power = max_power
+                max_power = collect_power(next_tx_time)
 
-            f.write(f"      - iter: {i}\n")
-            f.write(f"        max_power_pw: {max_power}\n")
-            f.write("        clients:\n")
-            for host, applied_phase, applied_delta in tx_updates:
-                f.write(f"          - host: {host}\n")
-                f.write(f"            applied_phase: {applied_phase}\n")
-                f.write(f"            applied_delta: {applied_delta}\n")
+                stronger = max_power > prev_power
+                prev_power = max_power
+
+                f.write(f"      - iter: {i}\n")
+                f.write(f"        max_power_pw: {max_power}\n")
+                f.write("        clients:\n")
+                for host, applied_phase, applied_delta in tx_updates:
+                    f.write(f"          - host: {host}\n")
+                    f.write(f"            applied_phase: {applied_phase}\n")
+                    f.write(f"            applied_delta: {applied_delta}\n")
+except KeyboardInterrupt:
+    stop_requested = True
+    print("KeyboardInterrupt received, shutting down...")
+finally:
+    cleanup()
