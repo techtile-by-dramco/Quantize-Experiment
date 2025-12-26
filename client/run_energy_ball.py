@@ -33,7 +33,7 @@ RX_GAIN = 22  # Empirically determined receive gain (22 dB without splitter, 27 
 CAPTURE_TIME = 10  # Duration of each capture in seconds
 FREQ = 0  # Base frequency offset (Hz); 0 means use default center frequency
 # server_ip = "10.128.52.53"  # Optional remote server address (commented out)
-server_ip = "10.128.48.3"
+SERVER_IP = "10.128.48.3"
 meas_id = 0  # Measurement identifier
 exp_id = 0  # Experiment identifier
 # =============================================================================
@@ -413,7 +413,7 @@ def setup(usrp, server_ip, connect=True):
     # Step2: set the time at the next pps (synchronous for all boards)
     # this is better than set_time_next_pps as we wait till the next PPS to transition and after that we set the time.
     # this ensures that the FPGA has enough time to clock in the new timespec (otherwise it could be too close to a PPS edge)
-    wait_till_go_from_server(server_ip, connect)
+    wait_till_go_from_server(SERVER_IP, connect)
     logger.info("Setting device timestamp to 0...")
     usrp.set_time_unknown_pps(uhd.types.TimeSpec(0.0))
     logger.debug("[SYNC] Resetting time.")
@@ -885,7 +885,7 @@ def tx_phase_coh(usrp, tx_streamer, quit_event, phase_corr, at_time, long_time=T
     tx_meta_thr = tx_meta_thread(tx_streamer, quit_event)
 
     # Send USRP is in TX mode for scope measurements
-    send_usrp_in_tx_mode(server_ip)
+    send_usrp_in_tx_mode(SERVER_IP)
 
     # Allow transmission to continue for the configured duration
     if long_time:
@@ -915,7 +915,7 @@ def parse_arguments():
     Example:
         python script.py -i 192.168.1.10
     """
-    global server_ip
+    global SERVER_IP
 
     # Create an argument parser with a brief description
     parser = argparse.ArgumentParser(description="Beamforming control script")
@@ -937,7 +937,7 @@ def parse_arguments():
     # If the user provided an IP address, apply it
     if args.ip:
         logger.debug(f"Setting server IP to: {args.ip}")
-        server_ip = args.ip
+        SERVER_IP = args.ip
 
 
 def get_next_phase(
@@ -1005,7 +1005,7 @@ def main():
         # -------------------------------------------------------------------------
 
         # Set up TX and RX streamers and establish connection
-        tx_streamer, rx_streamer = setup(usrp, server_ip, connect=True)
+        tx_streamer, rx_streamer = setup(usrp, SERVER_IP, connect=True)
 
         # Event used to control thread termination
         quit_event = threading.Event()
@@ -1102,7 +1102,7 @@ def main():
         # -------------------------------------------------------------------------
 
         alive_socket = context.socket(zmq.REQ)
-        alive_socket.connect(f"tcp://{server_ip}:{5558}")
+        alive_socket.connect(f"tcp://{SERVER_IP}:{5558}")
 
         phase_corr = phi_LB - np.deg2rad(phi_cable) + np.deg2rad(phi_BF)
         logger.info("Phase correction in rad: %s", phase_corr)
