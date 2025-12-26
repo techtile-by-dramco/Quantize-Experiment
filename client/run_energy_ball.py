@@ -1122,6 +1122,7 @@ def main():
                 prev_delta=prev_delta
             )
 
+            quit_event = threading.Event()
             tx_phase_coh(
                 usrp,
                 tx_streamer,
