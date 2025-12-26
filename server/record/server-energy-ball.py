@@ -173,8 +173,14 @@ def collect_power(tx_time: float) -> float:
     #take median of the max 10 power samples, median to avoid outliers
     max_samples = sorted(max_samples, reverse=True)[:10]
     if not max_samples:
+        print("No power samples captured.")
         return 0.0
-    return np.median(max_samples).item() # np.array to scalar 
+    median_power = np.median(max_samples).item()  # np.array to scalar
+    print(
+        f"Power stats: samples={len(max_samples)} "
+        f"max={max_samples[0]} median={median_power}"
+    )
+    return median_power
 
 
 def wait_till_tx_done(is_stronger: bool):
@@ -273,6 +279,10 @@ try:
 
                 stronger = max_power > prev_power
                 prev_power = max_power
+
+                print(
+                    f"Iteration {i}: max_power={max_power} prev_power={prev_power} stronger={stronger}"
+                )
 
                 f.write(f"      - iter: {i}\n")
                 f.write(f"        max_power_pw: {max_power}\n")
