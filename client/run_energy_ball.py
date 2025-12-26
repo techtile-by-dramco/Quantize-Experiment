@@ -927,7 +927,7 @@ def parse_arguments():
 
 
 def get_next_phase(
-    current_phase: float, stronger: bool, prev_delta: float, delta: float = np.pi / 50
+    current_phase: float, stronger: bool, prev_delta: float, delta_phi: float = np.pi / 50
 ) -> tuple[float, float]:
     """Compute next phase based on 'Scalable Feedback Control for Distributed
     Beamforming in Sensor Networks' algortihm.
@@ -941,9 +941,9 @@ def get_next_phase(
         Returns:
             tuple[float, float]: _description_
     """
-    u = prev_delta if stronger else 0
+    u = prev_delta if stronger else 0.0
 
-    applied_delta = np.random.choice([-delta, delta])
+    applied_delta = np.random.choice([-delta_phi, delta_phi])
     next_phase = current_phase + u + applied_delta
 
     return next_phase, applied_delta
@@ -1140,7 +1140,7 @@ def main():
             )
             rx_stronger = alive_socket.recv_string()
             logger.debug("Received from server: %s", rx_stronger)
-            stronger = bool(rx_stronger)
+            stronger = rx_stronger.lower().strip() == "true"
 
         print("DONE")
 
