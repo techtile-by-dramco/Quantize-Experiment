@@ -850,6 +850,7 @@ def tx_phase_coh(usrp, tx_streamer, quit_event, phase_corr, at_time, long_time=T
     logger.debug(f"Phases: {phases}")
     logger.debug(f"amplitudes: {amplitudes}")
     logger.debug(f"TX Gain: {FREE_TX_GAIN}")
+    logger.debug(f"TX in: {delta(usrp, at_time):0.2f}s")
 
     # Set the transmit gain for the active channel
     usrp.set_tx_gain(FREE_TX_GAIN, LOOPBACK_TX_CH)
@@ -877,7 +878,7 @@ def tx_phase_coh(usrp, tx_streamer, quit_event, phase_corr, at_time, long_time=T
     if long_time:
         time.sleep(TX_TIME + delta(usrp, at_time))
     else:
-        time.sleep(10.0 + delta(usrp, at_time))
+        time.sleep(CAPTURE_TIME + delta(usrp, at_time))
 
     # Signal all threads to stop
     quit_event.set()
