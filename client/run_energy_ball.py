@@ -355,25 +355,6 @@ def wait_till_go_from_server(ip, _connect=True):
     sync_socket.close()
 
 
-def get_power_from_server(ip, _connect=True) -> bool:
-    """ wait for STRONGER command from server true or false"""
-
-    # Connect to the publisher's address
-    logger.debug("Connecting to server %s.", ip)
-    sync_socket = context.socket(zmq.SUB)
-
-    sync_socket.connect(f"tcp://{ip}:{5557}")
-    sync_socket.subscribe("")
-
-    # Receives a string format message
-    logger.debug("Waiting on STRONGER from server %s.", ip)
-
-    stronger = sync_socket.recv_string()
-
-    sync_socket.close()
-    return bool(stronger)
-
-
 def send_usrp_in_tx_mode(ip):
     tx_mode_socket = context.socket(zmq.REQ)
     tx_mode_socket.connect(f"tcp://{ip}:{5559}")
@@ -1116,6 +1097,7 @@ def main():
         # START WITH INITIAL TX
         prev_delta = 0
         prev_phase = phase_corr
+        stronger = False
 
         tx_phase_coh(
             usrp,
