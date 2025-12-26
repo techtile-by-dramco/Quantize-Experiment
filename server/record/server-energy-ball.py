@@ -7,8 +7,8 @@ import zmq
 import time
 import sys
 import os
-from datetime import datetime
-from helper import *
+from datetime import datetime, UTC, timezone
+# from helper import *
 import numpy as np
 
 # =============================================================================
@@ -47,7 +47,7 @@ data_socket.bind("tcp://{}:{}".format(host, data_port))
 meas_id = 0
 
 # Unique ID for the experiment based on current UTC timestamp
-unique_id = str(datetime.utcnow().strftime("%Y%m%d%H%M%S"))
+unique_id = str(datetime.now(UTC).strftime("%Y%m%d%H%M%S"))
 
 # Directory where this script is located
 # script_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)))
@@ -66,12 +66,13 @@ WAIT_TIMEOUT = 60.0 * 10.0
 # Inform the user that the experiment is starting
 print(f"Starting experiment: {unique_id}")
 
-# Path to save the experiment data as a YAML file
+# Path setup for repo imports and data output
 current_file_path = os.path.abspath(__file__)
 current_dir = os.path.dirname(current_file_path)
 parent_path = os.path.dirname(current_dir)
+repo_root = os.path.dirname(parent_path)
+sys.path.insert(0, repo_root)
 output_path = os.path.join(parent_path, f"record/data/exp-{unique_id}.yml")
-
 
 from lib.yaml_utils import read_yaml_file
 from lib.ep import RFEP
@@ -210,7 +211,7 @@ with open(output_path, "w") as f:
     # Write experiment metadata to the YAML file
     f.write(f"experiment: {unique_id}\n")
     f.write(f"num_subscribers: {num_subscribers}\n")
-    f.write(f"measurments:\n")
+    f.write("measurments:\n")
 
     while True:
         # Wait for all subscribers to send a message
