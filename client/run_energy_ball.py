@@ -1099,15 +1099,15 @@ def main():
         prev_phase = phase_corr
         stronger = False
 
-        tx_phase_coh(
-            usrp,
-            tx_streamer,
-            quit_event,
-            # phase_corr=phi_LB + phi_P + np.deg2rad(phi_cable),
-            phase_corr=phase_corr,
-            at_time=start_next_cmd,
-            long_time=False,  # Set long_time True if you want to transmit longer than 10 seconds
-        )
+        # tx_phase_coh(
+        #     usrp,
+        #     tx_streamer,
+        #     quit_event,
+        #     # phase_corr=phi_LB + phi_P + np.deg2rad(phi_cable),
+        #     phase_corr=phase_corr,
+        #     at_time=start_next_cmd,
+        #     long_time=False,  # Set long_time True if you want to transmit longer than 10 seconds
+        # )
 
         # START the ENErgy ball algortihm
         logger.info("Starting ENERGY BALL transmission...")
