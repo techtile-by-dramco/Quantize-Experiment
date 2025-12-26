@@ -28,7 +28,7 @@ FREQ: !!float 920e6
 MIN_PLL_VAR: !!float 0.0001  
 # Minimum allowed PLL variance for stable frequency locking.
 
-CAPTURE_TIME: !!float 2 
+CAPTURE_TIME: !!float 10 
 # Duration for capturing data in seconds.
 
 TX_TIME: !!float 7200  
