@@ -33,7 +33,7 @@ RX_GAIN = 22  # Empirically determined receive gain (22 dB without splitter, 27 
 CAPTURE_TIME = 10  # Duration of each capture in seconds
 FREQ = 0  # Base frequency offset (Hz); 0 means use default center frequency
 # server_ip = "10.128.52.53"  # Optional remote server address (commented out)
-SERVER_IP = "10.128.48.3"
+SERVER_IP = "192.108.2.57"
 meas_id = 0  # Measurement identifier
 exp_id = 0  # Experiment identifier
 # =============================================================================
