@@ -144,6 +144,9 @@ try:
                 pos.z,
                 d.pwr_pw / 1e6  # µW
             )
+            print("x", end="", flush=True)
+        else:
+            print(".", end="", flush=True)
 
         # Periodic autosave
         if time() - last_save >= SAVE_EVERY:
