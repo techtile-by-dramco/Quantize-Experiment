@@ -109,6 +109,12 @@ formatter = LogFormatter(
 )
 console.setFormatter(formatter)
 
+
+# Also log to file in the script directory
+file_handler = logging.FileHandler(os.path.join(os.path.dirname(__file__), "log.txt"))
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
 # -------------------------------------------------------------------------
 # Topic identifiers for ZMQ or internal messaging
 # -------------------------------------------------------------------------
