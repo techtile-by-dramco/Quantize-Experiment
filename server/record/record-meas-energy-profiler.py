@@ -17,7 +17,7 @@ import sys
 # ****************************************************************************************** #
 
 SAVE_EVERY = 60.0  # seconds
-PREFIX = "sionna0"
+FOLDER = "sionna0"
 TIMESTAMP = round(time())
 
 # -------------------------------------------------
@@ -42,7 +42,7 @@ settings = read_yaml_file("experiment-settings.yaml")
 # -------------------------------------------------
 # Data directory
 # -------------------------------------------------
-save_dir = os.path.abspath(os.path.join(server_dir, "../../data"))
+save_dir = os.path.abspath(os.path.join(server_dir, "../../data", FOLDER))
 os.makedirs(save_dir, exist_ok=True)
 
 # ****************************************************************************************** #
@@ -77,8 +77,8 @@ def save_data():
             len(values_snapshot),
         )
 
-    positions_path = os.path.join(save_dir, f"{TIMESTAMP}_{PREFIX}_positions.npy")
-    values_path = os.path.join(save_dir, f"{TIMESTAMP}_{PREFIX}_values.npy")
+    positions_path = os.path.join(save_dir, f"{TIMESTAMP}_positions.npy")
+    values_path = os.path.join(save_dir, f"{TIMESTAMP}_values.npy")
 
     _atomic_save_npy(positions_path, positions_snapshot)
     _atomic_save_npy(values_path, values_snapshot)
