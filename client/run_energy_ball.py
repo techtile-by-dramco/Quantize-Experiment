@@ -1048,7 +1048,7 @@ def main():
         logger.info("Phase LB reference signal in rad: %s", phi_LB)
         logger.info("Phase LB reference signal in degrees: %s", np.rad2deg(phi_LB))
 
-        start_next_cmd += cmd_time + 4.0 + CAPTURE_TIME  # Schedule next command
+        start_next_cmd += cmd_time + 10.0 + CAPTURE_TIME  # Schedule next command
 
         # -------------------------------------------------------------------------
         # STEP 3: Load cable phase correction from YAML configuration (if available)
