@@ -11,6 +11,8 @@ import time
 import sys
 import os
 import signal
+import subprocess
+import shutil
 from datetime import datetime, UTC, timezone
 # from helper import *
 import numpy as np
@@ -38,6 +40,23 @@ if len(sys.argv) > 1:
 else:
     delay = 2
     num_subscribers = 42 
+
+
+# Ensure the sync port is free before binding sockets
+def _free_port(port: str):
+    """Attempt to kill any process bound to the given TCP port using fuser."""
+    cmd = ["fuser", "-k", f"{port}/tcp"]
+    if shutil.which(cmd[0]) is None:
+        logger.warning("fuser not found; skipping port cleanup for %s/tcp", port)
+        return
+    try:
+        subprocess.run(cmd, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        logger.info("Attempted to free port %s/tcp via fuser", port)
+    except Exception as e:
+        logger.warning("Failed to run fuser for %s/tcp: %s", port, e)
+
+
+_free_port(sync_port)
 
 # Creates a socket instance
 context = zmq.Context()
@@ -76,6 +95,7 @@ WAIT_TIMEOUT = 2.0
 
 # Inform the user that the experiment is starting
 logger.info("Starting experiment: %s", unique_id)
+
 
 # Path setup for repo imports and data output
 current_file_path = os.path.abspath(__file__)
@@ -264,7 +284,7 @@ def wait_till_tx_done(is_stronger: bool):
                 tx_updates.append((host, applied_phase, applied_delta))
 
             else:
-                logger.info("%s (%d/%d)", message, messages_received, num_subscribers)
+                logger.warning("%s (%d/%d)", message, messages_received, num_subscribers)
 
             # Send response back to the subscriber
             alive_socket.send_string(str(is_stronger))
