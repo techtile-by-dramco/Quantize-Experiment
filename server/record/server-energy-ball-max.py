@@ -288,7 +288,7 @@ def wait_till_tx_done(is_stronger: bool, best_phase_per_host: dict[str, float]):
 
             # Send response back to the subscriber
             best_phase = best_phase_per_host.get(host, applied_phase)
-            alive_socket.send_string(f\"{is_stronger} {best_phase}\")
+            alive_socket.send_string(f"{is_stronger} {best_phase}")
     return max_starting_in, tx_updates, first_msg_received
 
 def cleanup():
