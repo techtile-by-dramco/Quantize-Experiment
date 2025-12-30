@@ -948,20 +948,26 @@ def log_configuration():
     cfg = {
         "host": HOSTNAME,
         "server_ip": SERVER_IP,
-        "cmd_delay": CMD_DELAY,
+        "cmd_delay_s": CMD_DELAY,
         "rx_tx_same_channel": RX_TX_SAME_CHANNEL,
         "clock_timeout_ms": CLOCK_TIMEOUT,
         "init_delay_s": INIT_DELAY,
         "rate_sps": RATE,
         "loopback_tx_gain": LOOPBACK_TX_GAIN,
         "rx_gain": RX_GAIN,
+        "loopback_rx_gain": globals().get("LOOPBACK_RX_GAIN"),
+        "ref_rx_gain": globals().get("REF_RX_GAIN"),
+        "free_tx_gain": globals().get("FREE_TX_GAIN"),
         "capture_time_s": CAPTURE_TIME,
+        "tx_time_s": globals().get("TX_TIME"),
         "freq_hz": FREQ,
-        "next_phase_alg": NEXT_PHASE_ALG,
+        "begin_time_s": begin_time,
+        "next_phase_alg": NEXT_PHASE_ALG
     }
     lines = ["Configuration:"]
     for k in sorted(cfg):
-        lines.append(f"  {k}: {cfg[k]}")
+        if cfg[k] is not None:
+            lines.append(f"  {k}: {cfg[k]}")
     logger.info("\n".join(lines))
 
 
@@ -981,54 +987,54 @@ def get_next_phase_energyball(
     return next_phase, applied_delta
 
 
-def get_next_phase_adaptive(
-    current_phase: float,
-    stronger: bool,
-    prev_delta: float,
-    delta_phi: float = np.pi / 50,
-    grow: float = 1.1,
-    shrink: float = 0.5,
-    delta_min: float = np.pi / 200,
-    delta_max: float = np.pi / 10,
-) -> tuple[float, float]:
-    """Adaptive step: grow/shrink, flip sign on loss, occasional reseed, momentum decay."""
-    # initialize counters on first call
-    if not hasattr(get_next_phase_adaptive, "_iter_idx"):
-        get_next_phase_adaptive._iter_idx = 0
-        get_next_phase_adaptive._success_run = 0
+# def get_next_phase_adaptive(
+#     current_phase: float,
+#     stronger: bool,
+#     prev_delta: float,
+#     delta_phi: float = np.pi / 50,
+#     grow: float = 1.1,
+#     shrink: float = 0.5,
+#     delta_min: float = np.pi / 200,
+#     delta_max: float = np.pi / 10,
+# ) -> tuple[float, float]:
+#     """Adaptive step: grow/shrink, flip sign on loss, occasional reseed, momentum decay."""
+#     # initialize counters on first call
+#     if not hasattr(get_next_phase_adaptive, "_iter_idx"):
+#         get_next_phase_adaptive._iter_idx = 0
+#         get_next_phase_adaptive._success_run = 0
 
-    get_next_phase_adaptive._iter_idx += 1
-    iter_idx = get_next_phase_adaptive._iter_idx
-    success_run = get_next_phase_adaptive._success_run
+#     get_next_phase_adaptive._iter_idx += 1
+#     iter_idx = get_next_phase_adaptive._iter_idx
+#     success_run = get_next_phase_adaptive._success_run
 
-    # base delta
-    delta = prev_delta if prev_delta != 0 else delta_phi
+#     # base delta
+#     delta = prev_delta if prev_delta != 0 else delta_phi
 
-    # momentum / growth-decay logic
-    if stronger:
-        success_run += 1
-        # gentle growth with cap
-        delta = np.clip(delta * grow, -delta_max, delta_max)
-    else:
-        success_run = 0
-        delta = -delta * shrink
-        if abs(delta) < delta_min:
-            delta = np.sign(delta) * delta_min
+#     # momentum / growth-decay logic
+#     if stronger:
+#         success_run += 1
+#         # gentle growth with cap
+#         delta = np.clip(delta * grow, -delta_max, delta_max)
+#     else:
+#         success_run = 0
+#         delta = -delta * shrink
+#         if abs(delta) < delta_min:
+#             delta = np.sign(delta) * delta_min
 
-    # occasional reseed to escape local traps
-    reseed_every = 25
-    if iter_idx % reseed_every == 0:
-        jump = np.random.choice([-1, 1]) * delta_phi * 3
-        delta = jump
-        success_run = 0
+#     # occasional reseed to escape local traps
+#     reseed_every = 25
+#     if iter_idx % reseed_every == 0:
+#         jump = np.random.choice([-1, 1]) * delta_phi * 3
+#         delta = jump
+#         success_run = 0
 
-    # update success streak counter
-    get_next_phase_adaptive._success_run = success_run
+#     # update success streak counter
+#     get_next_phase_adaptive._success_run = success_run
 
-    next_phase = float(current_phase + delta)
-    # wrap to [-pi, pi]
-    next_phase = float((next_phase + np.pi) % (2 * np.pi) - np.pi)
-    return next_phase, delta
+#     next_phase = float(current_phase + delta)
+#     # wrap to [-pi, pi]
+#     next_phase = float((next_phase + np.pi) % (2 * np.pi) - np.pi)
+#     return next_phase, delta
 
 
 def get_next_phase(
@@ -1177,7 +1183,7 @@ def main():
         # -------------------------------------------------------------------------
         phi_offset = 0
         with open(
-            os.path.join(os.path.dirname(__file__), "tx-phases-sionna-1.yml"), "r"
+            os.path.join(os.path.dirname(__file__), "tx-phases-energy-ball.yml"), "r"
         ) as phases_yaml:
             try:
                 phases_dict = yaml.safe_load(phases_yaml)
