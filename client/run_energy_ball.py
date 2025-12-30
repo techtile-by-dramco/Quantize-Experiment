@@ -112,7 +112,11 @@ formatter = LogFormatter(
 console.setFormatter(formatter)
 
 # Also log to file in the script directory
-file_handler = logging.FileHandler(os.path.join(os.path.dirname(__file__), "log.txt"))
+log_path = os.path.join(os.path.dirname(__file__), "log.txt")
+# Ensure the log file exists
+with open(log_path, "a", encoding="utf-8"):
+    pass
+file_handler = logging.FileHandler(log_path)
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
