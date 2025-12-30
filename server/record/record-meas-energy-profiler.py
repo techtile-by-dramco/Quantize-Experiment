@@ -17,7 +17,7 @@ import sys
 # ****************************************************************************************** #
 
 SAVE_EVERY = 60.0  # seconds
-FOLDER = "sionna1-B"  # subfolder inside data/ where to save measurement data
+FOLDER = "energy-ball-A"  # subfolder inside data/ where to save measurement data
 TIMESTAMP = round(time())
 
 # -------------------------------------------------

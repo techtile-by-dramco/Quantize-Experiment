@@ -12,14 +12,14 @@ import sys
 # -------------------------------------------------
 
 DATA_DIR = "../data"
-FOLDER = "sionna1"
+FOLDER = "sionna1SDR"
 
 cmap = "inferno"
 
 wavelen = 3e8 / 920e6
-zoom_val = 2
+zoom_val = 1
 PLOT_LAST_VAL = 10  # number of most recent samples to highlight
-GRID_RESOLUTION = 0.11 * wavelen  # in meters
+GRID_RESOLUTION = 0.22 * wavelen  # in meters
 LABEL_IN_WAVELENGTHS = False  # False plots labels in absolute meters
 PLOT_DB = False
 
