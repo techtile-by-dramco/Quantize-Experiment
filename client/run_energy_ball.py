@@ -1073,7 +1073,7 @@ def main():
         logger.error(f"Error parsing 'cal-settings.yml': {e}")
         exit()
     except Exception as e:
-            logger.error(f"Unexpected error while loading calibration settings: {e}")
+        logger.error(f"Unexpected error while loading calibration settings: {e}")
         exit()
 
     # Log configuration after all overrides
