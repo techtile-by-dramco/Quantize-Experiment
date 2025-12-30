@@ -11,7 +11,7 @@ import time
 from lib.yaml_utils import read_yaml_file
 from lib.ep import RFEP
 
-settings = read_yaml_file("experiment-settings.yaml")
+settings = read_yaml_file("../../experiment-settings.yaml")
 rfep = RFEP(settings["ep"]["ip"], settings["ep"]["port"])
 
 try:

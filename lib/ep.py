@@ -24,7 +24,26 @@ class ep_data(object):
             )
 
     def __str__(self) -> str:
-        return f"{self.timestamp} s, {self.buffer_voltage_mv} mV, {self.resistance} Ohm, {self.pwr_pw} pW"
+        # Display power scaled with 2 decimals; supports pW, nW, uW, mW
+        unit = "pW"
+        value = self.pwr_pw
+        abs_pw = abs(self.pwr_pw)
+        if abs_pw >= 1e9:
+            unit = "mW"
+            value = self.pwr_pw / 1e9
+        elif abs_pw >= 1e6:
+            unit = "uW"
+            value = self.pwr_pw / 1e6
+        elif abs_pw >= 1e3:
+            unit = "nW"
+            value = self.pwr_pw / 1e3
+        # Fixed-width columns for alignment
+        return (
+            f"{self.timestamp:10.0f} s, "
+            f"{self.buffer_voltage_mv:10.2f} mV, "
+            f"{self.resistance:10.2f} Ohm, "
+            f"{value:10.2f} {unit:>3}"
+        )
 
     def to_csv(self):
         return [self.timestamp, self.buffer_voltage_mv, self.resistance, self.pwr_pw]

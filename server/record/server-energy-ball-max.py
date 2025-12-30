@@ -114,7 +114,7 @@ rfep = RFEP(settings["ep"]["ip"], settings["ep"]["port"])
 
 logger.info("Initial RFEP data: %s", rfep.get_data())
 
-CAPTURE_POWER_TIME = 5
+CAPTURE_POWER_TIME = 2.0
 prev_power = 0
 stop_requested = False
 
@@ -197,8 +197,8 @@ def send_sync():
 def collect_power(next_tx_in: float) -> float:
     max_samples = []
 
-    # sleep till TX+1.0
-    time.sleep(next_tx_in + 1.0)
+    # sleep till TX+0.5s
+    time.sleep(next_tx_in + 0.5)
 
     start_time = time.time()
     logger.info("Collecting power measurements for %s seconds...", CAPTURE_POWER_TIME)

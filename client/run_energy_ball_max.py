@@ -945,7 +945,7 @@ def get_next_phase(
     """
     u = prev_delta if stronger else 0.0
 
-    applied_delta = np.random.uniform(-delta_phi, delta_phi)
+    applied_delta = np.random.uniform(0, delta_phi)
     next_phase = float(current_phase + u + applied_delta)
 
     return next_phase, applied_delta
@@ -1157,8 +1157,8 @@ def main():
                 except ValueError:
                     pass
 
-        print("DONE ENERGY BALL transmission.")
-        print("STARTING LONG TRANSMISSION WITH BEST PHASES.")
+        logger.debug("DONE ENERGY BALL transmission.")
+        logger.debug("STARTING LONG TRANSMISSION WITH BEST PHASES.")
         tx_phase_coh(
             usrp,
             tx_streamer,

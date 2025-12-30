@@ -31,12 +31,12 @@ LOOPBACK_TX_GAIN = (
     50  # 70     # Empirically determined transmit gain for loopback tests
 )
 RX_GAIN = 22  # Empirically determined receive gain (22 dB without splitter, 27 dB with splitter)
-CAPTURE_TIME = 10  # Duration of each capture in seconds
 FREQ = 0  # Base frequency offset (Hz); 0 means use default center frequency
 # server_ip = "10.128.52.53"  # Optional remote server address (commented out)
 SERVER_IP = "192.108.2.57"
 meas_id = 0  # Measurement identifier
 exp_id = 0  # Experiment identifier
+NEXT_PHASE_ALG = "random"  
 # =============================================================================
 # =============================================================================
 
@@ -918,6 +918,13 @@ def parse_arguments():
     )
 
     parser.add_argument("--config-file", type=str)
+    parser.add_argument(
+        "--next-phase-alg",
+        type=str,
+        choices=["random", "energyball"],
+        help="Algorithm for next phase selection (overrides config/yaml)",
+        required=False,
+    )
 
     # Parse the command-line arguments
     args = parser.parse_args()
@@ -926,29 +933,101 @@ def parse_arguments():
     if args.ip:
         logger.debug(f"Setting server IP to: {args.ip}")
         SERVER_IP = args.ip
+    if args.next_phase_alg:
+        logger.debug(f"Setting next phase algorithm to: {args.next_phase_alg}")
+        globals()["NEXT_PHASE_ALG"] = args.next_phase_alg
+
+
+def get_random_phase() -> float:
+    """Generate a random phase between -pi and pi."""
+    return float(np.random.uniform(-np.pi, np.pi))
+
+
+def get_next_phase_energyball(
+    current_phase: float,
+    stronger: bool,
+    prev_delta: float,
+    delta_phi: float = np.pi / 50,
+) -> tuple[float, float]:
+    """Compute next phase based on energyball algorithm.
+
+    Existing random walk with memory if stronger.
+    """
+    u = prev_delta if stronger else 0.0
+    applied_delta = np.random.choice([-delta_phi, delta_phi])
+    next_phase = float(current_phase + u + applied_delta)
+    return next_phase, applied_delta
+
+
+def get_next_phase_adaptive(
+    current_phase: float,
+    stronger: bool,
+    prev_delta: float,
+    delta_phi: float = np.pi / 50,
+    grow: float = 1.1,
+    shrink: float = 0.5,
+    delta_min: float = np.pi / 200,
+    delta_max: float = np.pi / 10,
+) -> tuple[float, float]:
+    """Adaptive step: grow/shrink, flip sign on loss, occasional reseed, momentum decay."""
+    # initialize counters on first call
+    if not hasattr(get_next_phase_adaptive, "_iter_idx"):
+        get_next_phase_adaptive._iter_idx = 0
+        get_next_phase_adaptive._success_run = 0
+
+    get_next_phase_adaptive._iter_idx += 1
+    iter_idx = get_next_phase_adaptive._iter_idx
+    success_run = get_next_phase_adaptive._success_run
+
+    # base delta
+    delta = prev_delta if prev_delta != 0 else delta_phi
+
+    # momentum / growth-decay logic
+    if stronger:
+        success_run += 1
+        # gentle growth with cap
+        delta = np.clip(delta * grow, -delta_max, delta_max)
+    else:
+        success_run = 0
+        delta = -delta * shrink
+        if abs(delta) < delta_min:
+            delta = np.sign(delta) * delta_min
+
+    # occasional reseed to escape local traps
+    reseed_every = 25
+    if iter_idx % reseed_every == 0:
+        jump = np.random.choice([-1, 1]) * delta_phi * 3
+        delta = jump
+        success_run = 0
+
+    # update success streak counter
+    get_next_phase_adaptive._success_run = success_run
+
+    next_phase = float(current_phase + delta)
+    # wrap to [-pi, pi]
+    next_phase = float((next_phase + np.pi) % (2 * np.pi) - np.pi)
+    return next_phase, delta
 
 
 def get_next_phase(
-    current_phase: float, stronger: bool, prev_delta: float, delta_phi: float = np.pi / 50
+    current_phase: float,
+    stronger: bool,
+    prev_delta: float,
+    delta_phi: float = np.pi / 50,
+    alg: str = "energyball",
 ) -> tuple[float, float]:
-    """Compute next phase based on 'Scalable Feedback Control for Distributed
-    Beamforming in Sensor Networks' algortihm.
+    """Compute next phase based on configured algorithm.
 
-        Args:
-            current_phase (float): _description_
-            stronger (bool): _description_
-            prev_delta (float): _description_
-            delta (float, optional): _description_. Defaults to np.pi/50.
-
-        Returns:
-            tuple[float, float]: _description_
+    alg options:
+      - "energyball"/"scalable": random walk with memory if stronger (default)
+      - "adaptive": grow/shrink delta with sign flip
+      - "dither": alternate small/medium steps, flip on loss
+      - "fixed": deterministic step of +delta_phi each time
     """
-    u = prev_delta if stronger else 0.0
-
-    applied_delta = np.random.choice([-delta_phi, delta_phi])
-    next_phase = float(current_phase + u + applied_delta)
-
-    return next_phase, applied_delta
+    if alg == "energyball":
+        return get_next_phase_energyball(current_phase, stronger, prev_delta, delta_phi)
+   
+    return get_random_phase(), 0.0
 
 
 def main():
@@ -962,7 +1041,7 @@ def main():
             os.path.join(os.path.dirname(__file__), "cal-settings.yml"), "r"
         ) as file:
             vars = yaml.safe_load(file)
-            globals().update(vars)  # update the global variables with the vars in yaml
+        globals().update(vars)  # update the global variables with the vars in yaml
     except FileNotFoundError:
         logger.error(
             "Calibration file 'cal-settings.yml' not found in the current directory."
@@ -1100,6 +1179,7 @@ def main():
         prev_delta = 0
         prev_phase = phase_corr
         stronger = False
+        best_phase = phase_corr
 
         # tx_phase_coh(
         #     usrp,
@@ -1120,7 +1200,8 @@ def main():
             applied_phase, applied_delta = get_next_phase(
                 current_phase=prev_phase,
                 stronger=stronger,
-                prev_delta=prev_delta
+                prev_delta=prev_delta,
+                alg=NEXT_PHASE_ALG,
             )
 
             start_now_cmd = start_next_cmd
@@ -1139,24 +1220,34 @@ def main():
 
             logger.debug("Sending TX DONE MODE")
 
-            start_next_cmd += 60.0  # Schedule next command
+            start_next_cmd += 30.0  # Schedule next command
             time.sleep(uniform(0, 1)) #ensure all RPIs do not send all at once
             send_str_start = time.time()
             alive_socket.send_string(
                 f"{HOSTNAME} {applied_phase} {applied_delta} {delta(usrp, start_next_cmd):.2f}"
             )
 
-            rx_stronger = alive_socket.recv_string()
-            logger.debug("Received from server: %s and took %ss", rx_stronger, time.time() - send_str_start)
-            stronger = rx_stronger.lower().strip() == "true"
+            resp = alive_socket.recv_string()
+            logger.debug(
+                "Received from server: %s and took %ss",
+                resp,
+                time.time() - send_str_start,
+            )
+            parts = resp.split()
+            stronger = parts[0].lower().strip() == "true" if parts else False
+            if len(parts) > 1:
+                try:
+                    best_phase = float(parts[1])
+                except ValueError:
+                    pass
 
-        print("DONE ENERGY BALL transmission.")
-        print("STARTING LONG TRANSMISSION WITH LAST PHASES.")
+        logger.debug("DONE ENERGY BALL transmission.")
+        logger.debug("STARTING LONG TRANSMISSION WITH BEST PHASES.")
         tx_phase_coh(
             usrp,
             tx_streamer,
             quit_event,
-            phase_corr=applied_phase,
+            phase_corr=best_phase,
             at_time=start_next_cmd,
             long_time=True,  # Set long_time True if you want to transmit longer than 10 seconds
         )
