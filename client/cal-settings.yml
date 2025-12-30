@@ -10,7 +10,7 @@ INIT_DELAY: !!float 0.2
 RATE: !!float 250e3 #250e3  
 # Transmission/sample rate in Hz (250 kHz).
 
-LOOPBACK_TX_GAIN: !!float 58 #50  
+LOOPBACK_TX_GAIN: !!float 56 #50  
 # Transmit gain for loopback tests, empirically determined.
 
 FREE_TX_GAIN: !!float 80  
