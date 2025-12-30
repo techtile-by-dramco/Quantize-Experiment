@@ -1251,7 +1251,7 @@ def main():
 
             logger.debug("Sending TX DONE MODE")
 
-            start_next_cmd += 15.0  # Schedule next command
+            start_next_cmd += 18.0  # Schedule next command
             time.sleep(uniform(0, 1)) #ensure all RPIs do not send all at once
             send_str_start = time.time()
             alive_socket.send_string(
