@@ -46,6 +46,9 @@ client_script_args:
 test_connectivity: False             # set True if you want to test tile connectivity before continuing.
 halt_on_connectivity_failure: False  # set False if you want to continue with only the active tiles
 
+experiment_config:
+  target_location: 3.214765380859375, 1.77064404296875, 0.265255615234375
+
 # Energy Profiler settings
 ep:
   csv_header:

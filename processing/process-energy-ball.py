@@ -211,6 +211,31 @@ def save_all_figs(save_dir: str, prefix: str):
         print(f"Saved plot to {out_path}")
 
 
+def load_target_from_settings() -> list[float] | None:
+    """Return target_location from experiment-settings.yaml as [x, y, z?]."""
+    settings_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "experiment-settings.yaml"))
+    if not os.path.exists(settings_path):
+        return None
+    try:
+        with open(settings_path, "r") as fh:
+            settings = yaml.safe_load(fh) or {}
+        target = settings.get("experiment_config", {}).get("target_location")
+        if target is None:
+            return None
+        # Allow comma-separated string or list/tuple
+        if isinstance(target, str):
+            parts = [p.strip() for p in target.split(",") if p.strip()]
+        elif isinstance(target, (list, tuple)):
+            parts = list(target)
+        else:
+            return None
+        vals = [float(p) for p in parts]
+        return vals if len(vals) >= 2 else None
+    except Exception as exc:
+        print(f"Failed to load target_location from {settings_path}: {exc}", file=sys.stderr)
+        return None
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Process energy-ball YAML and list max power per iteration."
@@ -234,8 +259,7 @@ def main():
         nargs=3,
         type=float,
         metavar=("X", "Y", "Z"),
-        default=[3.181, 1.774, 0.266],
-        help="Target xyz to highlight on the position heatmap (z ignored).",
+        help="Target xyz to highlight on the position heatmap (z ignored). Defaults to experiment-settings.yaml experiment_config.target_location.",
     )
     args = parser.parse_args()
 
@@ -399,7 +423,8 @@ def main():
                 f"Position heatmap for {folder_for_positions}: {len(xs)} samples, grid {heatmap.shape[0]}x{heatmap.shape[1]}"
             )
 
-            tx, ty = args.target[0], args.target[1]
+            target_vals = args.target or load_target_from_settings() or [3.181, 1.774, 0.266]
+            tx, ty = target_vals[0], target_vals[1]
             target_rect = (tx - GRID_RES / 2, ty - GRID_RES / 2, GRID_RES, GRID_RES)
             plot_position_heatmap(
                 os.path.basename(folder_for_positions), heatmap, counts, x_edges, y_edges, target_rect
