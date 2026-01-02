@@ -138,19 +138,19 @@ else:
 prev_nr_active_tiles = nr_active_tiles
 
 
-# print("Installing service... ")
-# playbook_path = os.path.join(config.PLAYBOOK_DIR, "install-service.yaml")
+print("Installing service... ")
+playbook_path = os.path.join(config.PLAYBOOK_DIR, "install-service.yaml")
 
-# (nr_active_tiles, tiles, failed_tiles) = run_playbook(
-#     config.PROJECT_DIR,
-#     playbook_path,
-#     config.INVENTORY_PATH,
-#     extra_vars=None,
-#     hosts=tiles,
-#     mute_output=not(args.ansible_output),
-#     suppress_warnings=True,
-#     cleanup=True
-# )
+(nr_active_tiles, tiles, failed_tiles) = run_playbook(
+    config.PROJECT_DIR,
+    playbook_path,
+    config.INVENTORY_PATH,
+    extra_vars=None,
+    hosts=tiles,
+    mute_output=not(args.ansible_output),
+    suppress_warnings=True,
+    cleanup=True
+)
 
 if not (args.skip_apt or args.repos_only or args.check_uhd_only):
     print("Running apt update/upgrade ... ")
