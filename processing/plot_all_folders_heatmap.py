@@ -8,6 +8,7 @@ import os
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+import yaml
 
 wavelength = 3e8 / 920e6  # meters
 
@@ -15,12 +16,45 @@ GRID_RES = 0.1 * wavelength  # meters
 
 
 DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data"))
+SETTINGS_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "experiment-settings.yaml"))
 CMAP = "inferno"
 
 # Ensure pickle can resolve project modules referenced in saved arrays
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
+
+
+def load_target_from_settings(settings_path=SETTINGS_PATH):
+    """Return target_location from experiment-settings.yaml as [x, y, z?]."""
+    if not os.path.exists(settings_path):
+        return None
+    try:
+        with open(settings_path, "r", encoding="utf-8") as fh:
+            settings = yaml.safe_load(fh) or {}
+        target = settings.get("experiment_config", {}).get("target_location")
+        if target is None:
+            return None
+        if isinstance(target, str):
+            parts = [p.strip() for p in target.split(",") if p.strip()]
+        elif isinstance(target, (list, tuple)):
+            parts = list(target)
+        else:
+            return None
+        vals = [float(p) for p in parts]
+        return vals if len(vals) >= 2 else None
+    except Exception as exc:
+        print(f"Failed to load target_location from {settings_path}: {exc}", file=sys.stderr)
+        return None
+
+
+def target_rect_from_xyz(target_xyz, grid_res):
+    """Rectangle of size grid_res centered on target x/y."""
+    if not target_xyz or len(target_xyz) < 2:
+        return None
+    tx, ty = target_xyz[0], target_xyz[1]
+    half = grid_res / 2
+    return (tx - half, ty - half, grid_res, grid_res)
 
 
 def load_folder(folder_path):
@@ -155,6 +189,9 @@ def main():
     if not os.path.isdir(DATA_DIR):
         raise FileNotFoundError(f"DATA_DIR not found: {DATA_DIR}")
 
+    target_vals = load_target_from_settings()
+    target_rect = target_rect_from_xyz(target_vals, GRID_RES)
+
     # Sort subfolders by modification time (newest first) to view recent runs first
     folder_entries = []
     for name in os.listdir(DATA_DIR):
@@ -193,8 +230,7 @@ def main():
                 if len(recent_cells) == 5:
                     break
             recent_cells.reverse()
-
-        plot_heatmap(folder_path, heatmap, counts, x_edges, y_edges, recent_cells)
+        plot_heatmap(folder_path, heatmap, counts, x_edges, y_edges, recent_cells, target_rect)
         if not args.plot_all:
             break
 
