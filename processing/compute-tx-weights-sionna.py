@@ -6,7 +6,10 @@
 # Plywood box room via XML
 # ============================================================
 # %%
+import os
 from pathlib import Path
+import subprocess
+import argparse
 import numpy as np
 import tensorflow as tf
 import requests
@@ -82,22 +85,77 @@ target_location = load_target_location(experiment_settings_path)
 print(f"Using target_location from {experiment_settings_path}: {target_location.tolist()}")
 
 
-def configure_strategy() -> tf.distribute.Strategy:
-    """Configure TensorFlow to use all visible GPUs with MirroredStrategy when available."""
+def parse_args():
+    parser = argparse.ArgumentParser(description="Compute TX weights using Sionna RT.")
+    parser.add_argument(
+        "--cpu-only",
+        action="store_true",
+        help="Force CPU execution (avoids GPU memory issues).",
+    )
+    parser.add_argument(
+        "--gpu-index",
+        type=int,
+        help="Force a specific GPU index (overrides auto free-memory selection).",
+    )
+    return parser.parse_args()
+
+
+def pick_gpu_with_max_free_memory() -> int | None:
+    """Return GPU index with most free memory via nvidia-smi; None if unavailable."""
+    try:
+        out = subprocess.check_output(
+            [
+                "nvidia-smi",
+                "--query-gpu=index,memory.free",
+                "--format=csv,noheader,nounits",
+            ],
+            encoding="utf-8",
+            stderr=subprocess.DEVNULL,
+        )
+        candidates = []
+        for line in out.strip().splitlines():
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) >= 2:
+                idx = int(parts[0])
+                free = float(parts[1])
+                candidates.append((idx, free))
+        if candidates:
+            best = max(candidates, key=lambda x: x[1])
+            print(f"Selecting GPU {best[0]} with ~{best[1]} MiB free (nvidia-smi).")
+            return best[0]
+    except Exception as exc:
+        print(f"Could not query nvidia-smi for free memory, using default GPU selection: {exc}")
+    return None
+
+
+def configure_strategy(cpu_only: bool, gpu_index: int | None) -> tf.distribute.Strategy:
+    """Configure TensorFlow device placement. Set env GBWPT_CPU_ONLY=1 to force CPU."""
+    env_cpu_only = os.environ.get("GBWPT_CPU_ONLY", "0") in {"1", "true", "True", "yes"}
+    if cpu_only or env_cpu_only:
+        tf.config.set_visible_devices([], "GPU")
+        print("Forcing CPU (flag or GBWPT_CPU_ONLY=1).")
+        return tf.distribute.get_strategy()
+
     gpus = tf.config.list_physical_devices("GPU")
     if gpus:
+        if gpu_index is not None and 0 <= gpu_index < len(gpus):
+            chosen_idx = gpu_index
+            print(f"Using user-selected GPU index {chosen_idx}.")
+        else:
+            chosen_idx = pick_gpu_with_max_free_memory()
+        if chosen_idx is not None and chosen_idx < len(gpus):
+            tf.config.set_visible_devices(gpus[chosen_idx], "GPU")
+            gpus = [gpus[chosen_idx]]
         for gpu in gpus:
             tf.config.experimental.set_memory_growth(gpu, True)
-        if len(gpus) > 1:
-            print(f"Using MirroredStrategy across {len(gpus)} GPUs.")
-            return tf.distribute.MirroredStrategy()
-        print("Single GPU detected; using default strategy.")
+        print(f"Using GPU device(s): {[g.name for g in gpus]}")
     else:
         print("No GPU detected; using default strategy (CPU).")
     return tf.distribute.get_strategy()
 
 
-strategy = configure_strategy()
+args = parse_args()
+strategy = configure_strategy(cpu_only=args.cpu_only, gpu_index=args.gpu_index)
 
 # ============================================================
 # LOAD TX POSITIONS (channel 1 only) -> all_pts
