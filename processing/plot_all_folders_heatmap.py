@@ -14,8 +14,8 @@ import yaml
 
 WAVELENGTH = 3e8 / 920e6  # meters
 
-GRID_RES = 0.1 * WAVELENGTH  # meters
-SMALL_POWER_UW = 1e-3  # threshold for reporting tiny measurements (micro-watts)
+GRID_RES = 0.08 * WAVELENGTH  # meters
+SMALL_POWER_UW = 1e-8  # threshold for reporting tiny measurements (micro-watts)
 
 
 DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data"))
@@ -51,13 +51,13 @@ def load_target_from_settings(settings_path=SETTINGS_PATH):
         return None
 
 
-def target_rect_from_xyz(target_xyz, grid_res):
-    """Rectangle of size grid_res centered on target x/y."""
+def target_rect_from_xyz(target_xyz, rect_size=0.5 * WAVELENGTH):
+    """Rectangle of fixed size (default 0.5 lambda) centered on target x/y."""
     if not target_xyz or len(target_xyz) < 2:
         return None
     tx, ty = target_xyz[0], target_xyz[1]
-    half = grid_res / 2
-    return (tx - half, ty - half, grid_res, grid_res)
+    half = rect_size / 2
+    return (tx - half, ty - half, rect_size, rect_size)
 
 
 def load_folder(folder_path):
@@ -74,8 +74,18 @@ def load_folder(folder_path):
         if not os.path.exists(val_path):
             print(f"Skipping {base}: missing values file")
             continue
-        positions_parts.append(np.load(pos_path, allow_pickle=True))
-        values_parts.append(np.load(val_path, allow_pickle=True))
+        pos_arr = np.load(pos_path, allow_pickle=True)
+        val_arr = np.load(val_path, allow_pickle=True)
+        if len(pos_arr) != len(val_arr):
+            min_len = min(len(pos_arr), len(val_arr))
+            print(
+                f"\033[91mWarning: {base} positions ({len(pos_arr)}) != values ({len(val_arr)}); "
+                f"truncating both to {min_len}\033[0m"
+            )
+            pos_arr = pos_arr[:min_len]
+            val_arr = val_arr[:min_len]
+        positions_parts.append(pos_arr)
+        values_parts.append(val_arr)
 
     if not positions_parts:
         raise ValueError(f"No position/value pairs found in {folder_path}")
@@ -86,25 +96,86 @@ def load_folder(folder_path):
     return positions, values
 
 
-def report_small_values(folder_path, vs, threshold=SMALL_POWER_UW):
-    """Log when zero or near-zero power values appear."""
+def filter_small_values(folder_path, positions, values, vs, threshold=SMALL_POWER_UW):
+    """
+    Log and drop zero or near-zero power samples (threshold in uW).
+    Returns filtered positions, values, and vs arrays.
+    """
     zeros = vs == 0.0
     small = (vs > 0.0) & (vs < threshold)
+    drop_mask = ~(zeros | small)
+
     reports = []
     if zeros.any():
         reports.append(f"{zeros.sum()} zeros")
     if small.any():
         reports.append(f"{small.sum()} below {threshold:.1e} uW (min {vs[small].min():.2e})")
+
     if reports:
-        print(f"{os.path.basename(folder_path)}: {', '.join(reports)}")
+        dropped = len(vs) - drop_mask.sum()
+        print(f"{os.path.basename(folder_path)}: {', '.join(reports)} (removed {dropped})")
+        return positions[drop_mask], values[drop_mask], vs[drop_mask]
+
+    return positions, values, vs
 
 
-def compute_heatmap(xs, ys, vs, grid_res, agg="mean"):
+def drop_consecutive_equal_values(positions, values):
+    """
+    Remove runs of consecutive measurements that have identical power.
+    The same indices are removed from positions to keep arrays aligned.
+    """
+    if len(positions) != len(values):
+        min_len = min(len(positions), len(values))
+        print(
+            f"Warning: length mismatch positions={len(positions)} values={len(values)}; truncating to {min_len}"
+        )
+        positions = positions[:min_len]
+        values = values[:min_len]
+
+    keep_idx = [0]
+    last_power = values[0].pwr_pw
+    for idx in range(1, len(values)):
+        if values[idx].pwr_pw != last_power:
+            keep_idx.append(idx)
+            last_power = values[idx].pwr_pw
+
+    if len(keep_idx) == len(values):
+        return positions, values
+
+    print(f"Dropped {len(values) - len(keep_idx)} consecutive duplicates (power).")
+    return positions[keep_idx], values[keep_idx]
+
+
+def heatmap_delta_db(curr_heatmap, base_heatmap):
+    """
+    Compute delta in dB: 10*log10(curr) - 10*log10(base).
+    Cells with non-positive or NaN values in either map become NaN.
+    """
+    diff = np.full_like(curr_heatmap, np.nan, dtype=float)
+    valid = (
+        np.isfinite(curr_heatmap)
+        & np.isfinite(base_heatmap)
+        & (curr_heatmap > 0)
+        & (base_heatmap > 0)
+    )
+    if not np.any(valid):
+        return diff
+
+    curr_db = np.zeros_like(curr_heatmap, dtype=float)
+    base_db = np.zeros_like(base_heatmap, dtype=float)
+    curr_db[valid] = 10 * np.log10(curr_heatmap[valid])
+    base_db[valid] = 10 * np.log10(base_heatmap[valid])
+    diff[valid] = curr_db[valid] - base_db[valid]
+    return diff
+
+
+def compute_heatmap(xs, ys, vs, grid_res, agg="median", x_edges=None, y_edges=None):
     """Bin values onto a 2D grid and compute mean or median power per cell."""
-    min_x, max_x = xs.min(), xs.max()
-    min_y, max_y = ys.min(), ys.max()
-    x_edges = np.arange(min_x, max_x + grid_res, grid_res)
-    y_edges = np.arange(min_y, max_y + grid_res, grid_res)
+    if x_edges is None or y_edges is None:
+        min_x, max_x = xs.min(), xs.max()
+        min_y, max_y = ys.min(), ys.max()
+        x_edges = np.arange(min_x, max_x + grid_res, grid_res)
+        y_edges = np.arange(min_y, max_y + grid_res, grid_res)
 
     heatmap = np.full((len(x_edges) - 1, len(y_edges) - 1), np.nan, dtype=float)
     if agg not in {"mean", "median"}:
@@ -134,7 +205,7 @@ def compute_heatmap(xs, ys, vs, grid_res, agg="mean"):
     return heatmap, counts, x_edges, y_edges, xi, yi
 
 
-def plot_heatmap(folder, heatmap, counts, x_edges, y_edges, recent_cells=None, target_rect=None, agg="mean"):
+def plot_heatmap(folder, heatmap, counts, x_edges, y_edges, recent_cells=None, target_rect=None, agg="mean", show=True):
     """Render a heatmap with axes in meters."""
     fig, ax = plt.subplots()
     img = ax.imshow(
@@ -171,9 +242,9 @@ def plot_heatmap(folder, heatmap, counts, x_edges, y_edges, recent_cells=None, t
                 w,
                 h,
                 fill=False,
-                edgecolor="cyan",
+                edgecolor="green",
                 linewidth=2,
-                linestyle="--",
+                # linestyle="-",
             )
         )
     # Optional: annotate with counts to show sample density per cell
@@ -192,7 +263,49 @@ def plot_heatmap(folder, heatmap, counts, x_edges, y_edges, recent_cells=None, t
     #             )
     fig.tight_layout()
     plt.savefig(os.path.join(folder, "heatmap.png"))
-    plt.show()
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+
+def plot_diff_heatmap(folder, baseline_name, diff_map, x_edges, y_edges, target_rect=None, show=True):
+    """Plot the difference vs baseline in dB (folder - baseline) on aligned grid."""
+    vmax_db = 5 * np.log10(42) # we expect a sqrt(42) ~16x power gain at most
+    vmin_db = -vmax_db
+    fig, ax = plt.subplots()
+    img = ax.imshow(
+        diff_map.T,
+        origin="lower",
+        cmap="coolwarm",
+        vmin=vmin_db,
+        vmax=vmax_db,
+        extent=[x_edges[0], x_edges[-1], y_edges[0], y_edges[-1]],
+    )
+    ax.set_title(f"{os.path.basename(folder)} - {baseline_name} | delta power per cell [dB]")
+    ax.set_xlabel("x [m]")
+    ax.set_ylabel("y [m]")
+    if target_rect:
+        x0, y0, w, h = target_rect
+        ax.add_patch(
+            plt.Rectangle(
+                (x0, y0),
+                w,
+                h,
+                fill=False,
+                edgecolor="green",
+                linewidth=2,
+            )
+        )
+    cbar = fig.colorbar(img, ax=ax)
+    cbar.ax.set_ylabel("Delta vs baseline [dB]")
+    fig.tight_layout()
+    out_name = f"heatmap_vs_{baseline_name}_dB.png"
+    plt.savefig(os.path.join(folder, out_name))
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
 
 
 def parse_args():
@@ -210,10 +323,25 @@ def parse_args():
         help="Overlay rectangles for the last 5 visited grid cells.",
     )
     parser.add_argument(
+        "--drop-consecutive-equal",
+        action="store_true",
+        help="Filter out consecutive samples with identical power values.",
+    )
+    parser.add_argument(
+        "--save-only",
+        action="store_true",
+        help="Save plots to disk without displaying them.",
+    )
+    parser.add_argument(
         "--agg",
         choices=["mean", "median"],
         default="mean",
         help="Aggregation used for heatmap cells (default: mean).",
+    )
+    parser.add_argument(
+        "--baseline-folder",
+        default="RANDOM",
+        help="Folder name to use as baseline for delta heatmap (default: RANDOM). Set empty to disable.",
     )
     return parser.parse_args()
 
@@ -224,7 +352,7 @@ def main():
         raise FileNotFoundError(f"DATA_DIR not found: {DATA_DIR}")
 
     target_vals = load_target_from_settings()
-    target_rect = target_rect_from_xyz(target_vals, GRID_RES)
+    target_rect = target_rect_from_xyz(target_vals)
 
     # Sort subfolders by modification time (newest first) to view recent runs first
     folder_entries = []
@@ -236,6 +364,33 @@ def main():
     if not folder_entries:
         raise ValueError(f"No subfolders found in {DATA_DIR}")
 
+    # Precompute baseline heatmap if requested
+    baseline_heatmap = baseline_x_edges = baseline_y_edges = None
+    baseline_agg = "mean"
+    baseline_folder_name = args.baseline_folder.strip() if args.baseline_folder else ""
+    if baseline_folder_name:
+        baseline_path = os.path.join(DATA_DIR, baseline_folder_name)
+        if os.path.isdir(baseline_path):
+            try:
+                base_positions, base_values = load_folder(baseline_path)
+                if args.drop_consecutive_equal:
+                    base_positions, base_values = drop_consecutive_equal_values(base_positions, base_values)
+                base_vs = np.array([v.pwr_pw / 1e6 for v in base_values], dtype=float)
+                base_positions, base_values, base_vs = filter_small_values(
+                    baseline_path, base_positions, base_values, base_vs
+                )
+                base_xs = np.array([p.x for p in base_positions], dtype=float)
+                base_ys = np.array([p.y for p in base_positions], dtype=float)
+                baseline_heatmap, _, baseline_x_edges, baseline_y_edges, _, _ = compute_heatmap(
+                    base_xs, base_ys, base_vs, GRID_RES, agg=baseline_agg
+                )
+            except Exception as exc:
+                print(f"Failed to build baseline from {baseline_path}: {exc}")
+                baseline_folder_name = ""
+        else:
+            print(f"Baseline folder not found: {baseline_path}")
+            baseline_folder_name = ""
+
     folder_entries.sort(key=lambda x: x[0], reverse=True)
     for _, folder_name in folder_entries:
         folder_path = os.path.join(DATA_DIR, folder_name)
@@ -245,15 +400,35 @@ def main():
             print(e)
             continue
 
-        xs = np.array([p.x for p in positions], dtype=float)
-        ys = np.array([p.y for p in positions], dtype=float)
+        if args.drop_consecutive_equal:
+            positions, values = drop_consecutive_equal_values(positions, values)
+
         vs = np.array([v.pwr_pw / 1e6 for v in values], dtype=float)  # uW
 
-        report_small_values(folder_path, vs)
+        positions, values, vs = filter_small_values(folder_path, positions, values, vs)
+
+        xs = np.array([p.x for p in positions], dtype=float)
+        ys = np.array([p.y for p in positions], dtype=float)
 
         heatmap, counts, x_edges, y_edges, xi, yi = compute_heatmap(
             xs, ys, vs, GRID_RES, agg=args.agg
         )
+
+        # If baseline available, compute aligned heatmap and plot delta
+        if baseline_heatmap is not None and baseline_x_edges is not None and baseline_y_edges is not None:
+            aligned_heatmap, _, _, _, _, _ = compute_heatmap(
+                xs, ys, vs, GRID_RES, agg=baseline_agg, x_edges=baseline_x_edges, y_edges=baseline_y_edges
+            )
+            diff_map = heatmap_delta_db(aligned_heatmap, baseline_heatmap)
+            plot_diff_heatmap(
+                folder_path,
+                baseline_folder_name,
+                diff_map,
+                baseline_x_edges,
+                baseline_y_edges,
+                target_rect=target_rect,
+                show=not args.save_only,
+            )
 
         recent_cells = None
         if args.plot_movement:
@@ -277,6 +452,7 @@ def main():
             recent_cells,
             target_rect,
             agg=args.agg,
+            show=not args.save_only,
         )
         if not args.plot_all:
             break
