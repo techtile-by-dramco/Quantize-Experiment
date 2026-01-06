@@ -1,0 +1,21 @@
+% PGFPlots includegraphics example for heatmap_bitmap.png
+\begin{tikzpicture}
+  \begin{axis}[
+    xmin=2.84952, xmax=3.71039,
+    ymin=1.32033, ymax=2.12902,
+    axis lines=none,
+    ticks=none,
+    enlargelimits=false,
+    title={sionna1-G | mean power [uW]}
+  ]
+    \addplot graphics [includegraphics cmd=\pgfimage, xmin=2.84952, xmax=3.71039, ymin=1.32033, ymax=2.12902] {heatmap_bitmap.png};
+    % Target rectangle
+    \addplot [draw=cyan, thick] coordinates {
+      (3.19659,1.69695)
+      (3.35964,1.69695)
+      (3.35964,1.86)
+      (3.19659,1.86)
+      (3.19659,1.69695)
+    };
+  \end{axis}
+\end{tikzpicture}
