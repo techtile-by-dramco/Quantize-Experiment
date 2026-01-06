@@ -21,7 +21,7 @@ import zmq
 # ****************************************************************************************** #
 
 SAVE_EVERY = 60.0  # seconds
-FOLDER = "sionna2-3-A"  # subfolder inside data/ where to save measurement data
+FOLDER = "SMC0-1"  # subfolder inside data/ where to save measurement data
 TIMESTAMP = round(time())
 DEFAULT_DURATION = None  # seconds, override via CLI
 

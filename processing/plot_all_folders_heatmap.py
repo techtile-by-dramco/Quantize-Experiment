@@ -14,7 +14,7 @@ import yaml
 
 WAVELENGTH = 3e8 / 920e6  # meters
 
-GRID_RES = 0.08 * WAVELENGTH  # meters
+GRID_RES = 0.1 * WAVELENGTH  # meters
 SMALL_POWER_UW = 1e-8  # threshold for reporting tiny measurements (micro-watts)
 
 
