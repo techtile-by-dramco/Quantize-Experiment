@@ -36,12 +36,12 @@ extra_packages:                     # list of extra packages to be installed on 
 # client_script_name: "run_quasi_multi_tone.py"
 #client_script_name: "run_adaptive_single_tone.py"
 # client_script_name: "run_gbwpt_random_phases.py"
-client_script_name: "run_gbwpt_phases.py"
+client_script_name: "run_reciprocity.py"
 client_script_args:
   - "--config-file"
   - "/home/pi/geometry-based-wireless-power-transfer/experiment-settings.yaml"
-  - "--tx-phase-file"
-  - "tx-phases-smc1.yml"
+  # - "--tx-phase-file"
+  # - "tx-phases-smc1.yml"
 
 # Server script behaviour
 test_connectivity: False             # set True if you want to test tile connectivity before continuing.
