@@ -243,27 +243,37 @@ def rx_ref(usrp, rx_streamer, quit_event, duration, result_queue, start_time=Non
         logger.debug("Frequency offset CH0: %s", fmt(freq_slope_ch0 / (2 * np.pi)))
         logger.debug("Frequency offset CH1: %s", fmt(freq_slope_ch1 / (2 * np.pi)))
 
-        logger.debug(
-            "Phase CH0: mean %s%s min %s%s max %s%s",
-            fmt(np.rad2deg(tools.circmean(phase_ch0, deg=False))), DEG,
-            fmt(np.rad2deg(phase_ch0).min()), DEG,
-            fmt(np.rad2deg(phase_ch0).max()), DEG,
-        )
-        logger.debug(
-            "Phase CH1: mean %s%s min %s%s max %s%s",
-            fmt(np.rad2deg(tools.circmean(phase_ch1, deg=False))), DEG,
-            fmt(np.rad2deg(phase_ch1).min()), DEG,
-            fmt(np.rad2deg(phase_ch1).max()), DEG,
-        )
+        # logger.debug(
+        #     "Phase CH0: mean %s%s min %s%s max %s%s",
+        #     fmt(np.rad2deg(tools.circmean(phase_ch0, deg=False))), DEG,
+        #     fmt(np.rad2deg(phase_ch0).min()), DEG,
+        #     fmt(np.rad2deg(phase_ch0).max()), DEG,
+        # )
+        # logger.debug(
+        #     "Phase CH1: mean %s%s min %s%s max %s%s",
+        #     fmt(np.rad2deg(tools.circmean(phase_ch1, deg=False))), DEG,
+        #     fmt(np.rad2deg(phase_ch1).min()), DEG,
+        #     fmt(np.rad2deg(phase_ch1).max()), DEG,
+        # )
 
         phase_diff = tools.to_min_pi_plus_pi(phase_ch0 - phase_ch1, deg=False)
+
+        logger.debug(
+            "Phase CH1: mean %s%s min %s%s max %s%s",
+            fmt(np.rad2deg(tools.circmean(phase_diff, deg=False))),
+            DEG,
+            fmt(np.rad2deg(phase_diff).min()),
+            DEG,
+            fmt(np.rad2deg(phase_diff).max()),
+            DEG,
+        )
 
         # phase_diff = phase_ch0 - phase_ch1
 
         _circ_mean = tools.circmean(phase_diff, deg=False)
-        _mean = np.mean(phase_diff)
+        # _mean = np.mean(phase_diff)
 
-        logger.debug("Diff cirmean and mean: %s", fmt(_circ_mean - _mean))
+        # logger.debug("Diff cirmean and mean: %s", fmt(_circ_mean - _mean))
 
         # result_queue.put(_mean)
         result_queue.put(_circ_mean)
