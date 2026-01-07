@@ -11,10 +11,15 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 import numpy as np
 import yaml
+try:
+    from scipy.ndimage import distance_transform_edt
+    HAS_DT = True
+except Exception:
+    HAS_DT = False
 
 WAVELENGTH = 3e8 / 920e6  # meters
 
-GRID_RES = 0.1 * WAVELENGTH  # meters
+GRID_RES = 0.1 * WAVELENGTH  # meters (default; overridden by --grid-res-lambda)
 SMALL_POWER_UW = 1e-8  # threshold for reporting tiny measurements (micro-watts)
 
 
@@ -278,6 +283,20 @@ def compute_heatmap(xs, ys, vs, grid_res, agg="median", x_edges=None, y_edges=No
         if values:
             heatmap[i_x, i_y] = float(func(values))
     return heatmap, counts, x_edges, y_edges, xi, yi
+
+
+def fill_empty_cells_nearest(heatmap):
+    """Fill NaN cells with nearest non-NaN value using distance transform."""
+    if not HAS_DT:
+        print("Warning: scipy.ndimage.distance_transform_edt not available; cannot fill empty cells.")
+        return heatmap
+    mask = np.isnan(heatmap)
+    if not mask.any():
+        return heatmap
+    filled = heatmap.copy()
+    idx = distance_transform_edt(mask, return_distances=False, return_indices=True)
+    filled[mask] = heatmap[tuple(idx[:, mask])]
+    return filled
 
 
 def plot_heatmap(
@@ -562,10 +581,20 @@ def parse_args():
         action="store_true",
         help="Export heatmap grids and edges to CSV (for LaTeX/pgfplots).",
     )
+    parser.add_argument(
+        "--fill-empty",
+        action="store_true",
+        help="Interpolate/fill empty cells with nearest non-empty value.",
+    )
+    parser.add_argument(
+        "--grid-res-lambda",
+        type=float,
+        help="Grid resolution as a fraction of wavelength (e.g., 0.08 for 0.08*lambda). Overrides default.",
+    )
     return parser.parse_args()
 
 
-def print_run_summary(args, target_rect, baseline_folder_name, baseline_agg):
+def print_run_summary(args, target_rect, baseline_folder_name, baseline_agg, grid_res):
     """Print selected options so it's clear how folders will be processed."""
     rect_desc = (
         f"{target_rect[2]:.3f}x{target_rect[3]:.3f} m at ({target_rect[0]:.3f}, {target_rect[1]:.3f})"
@@ -585,6 +614,8 @@ def print_run_summary(args, target_rect, baseline_folder_name, baseline_agg):
         f"- small-value filter threshold (uW): {SMALL_POWER_UW}\n"
         f"- target rectangle: {rect_desc}\n"
         f"- baseline folder: {baseline_desc} (agg={baseline_agg})\n"
+        f"- fill_empty: {args.fill_empty}\n"
+        f"- grid_res: {grid_res:.4f} m\n"
     )
 
 
@@ -592,6 +623,10 @@ def main():
     args = parse_args()
     if not os.path.isdir(DATA_DIR):
         raise FileNotFoundError(f"DATA_DIR not found: {DATA_DIR}")
+
+    grid_res = GRID_RES
+    if args.grid_res_lambda:
+        grid_res = float(args.grid_res_lambda) * WAVELENGTH
 
     target_vals = load_target_from_settings()
     target_rect = target_rect_from_xyz(target_vals)
@@ -633,7 +668,7 @@ def main():
             print(f"Baseline folder not found: {baseline_path}")
             baseline_folder_name = ""
 
-    print_run_summary(args, target_rect, baseline_folder_name, baseline_agg)
+    print_run_summary(args, target_rect, baseline_folder_name, baseline_agg, grid_res)
 
     folder_entries.sort(key=lambda x: x[0], reverse=True)
     for _, folder_name in folder_entries:
@@ -658,8 +693,10 @@ def main():
         ys = np.array([p.y for p in positions], dtype=float)
 
         heatmap, counts, x_edges, y_edges, xi, yi = compute_heatmap(
-            xs, ys, vs, GRID_RES, agg=args.agg
+            xs, ys, vs, grid_res, agg=args.agg
         )
+        if args.fill_empty:
+            heatmap = fill_empty_cells_nearest(heatmap)
 
         if args.export_csv:
             export_heatmap_csv(folder_path, heatmap, x_edges, y_edges)
@@ -675,8 +712,11 @@ def main():
         # If baseline available, compute aligned heatmap and plot delta
         if baseline_heatmap is not None and baseline_x_edges is not None and baseline_y_edges is not None:
             aligned_heatmap, _, _, _, _, _ = compute_heatmap(
-                xs, ys, vs, GRID_RES, agg=baseline_agg, x_edges=baseline_x_edges, y_edges=baseline_y_edges
+                xs, ys, vs, grid_res, agg=baseline_agg, x_edges=baseline_x_edges, y_edges=baseline_y_edges
             )
+            if args.fill_empty:
+                aligned_heatmap = fill_empty_cells_nearest(aligned_heatmap)
+                baseline_heatmap = fill_empty_cells_nearest(baseline_heatmap)
             diff_map = heatmap_delta_db(aligned_heatmap, baseline_heatmap)
             global_gain, target_gain = gain_stats(aligned_heatmap, baseline_heatmap, baseline_x_edges, baseline_y_edges, target_rect)
             gain_title = None
