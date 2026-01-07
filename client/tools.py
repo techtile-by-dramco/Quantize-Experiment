@@ -77,15 +77,15 @@ def apply_bandpass(x: np.ndarray, fs=250e3):
 def get_phases_and_apply_bandpass(x: np.ndarray, fs=250e3):
     sos = butter_bandpass(lowcut, highcut, fs, order=9)
 
+    phase = np.angle(x)
+    # Approximate instantaneous frequency offset via phase derivative
+    dphi = np.unwrap(np.angle(x[1:] * np.conj(x[:-1])))
+    freq_offset = (fs / (2 * np.pi)) * np.mean(dphi)
+
     y_re = butter_bandpass_filter(np.real(x), lowcut, highcut, fs, order=9, sos=sos)
     y_imag = butter_bandpass_filter(np.imag(x), lowcut, highcut, fs, order=9, sos=sos)
 
-    y = y_re + 1j * y_imag
-    phase = np.angle(y)
-    # Approximate instantaneous frequency offset via phase derivative
-    dphi = np.unwrap(np.angle(y[1:] * np.conj(y[:-1])))
-    freq_offset = (fs / (2 * np.pi)) * np.mean(dphi)
-    return phase, freq_offset
+    return np.angle(y_re + 1j * y_imag), freq_offset
 
 
 def get_phases_and_remove_CFO(x, fs=250e3, remove_first_samples=True):
