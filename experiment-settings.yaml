@@ -42,7 +42,7 @@ client_script_args:
   - "--config-file"
   - "/home/pi/geometry-based-wireless-power-transfer/experiment-settings.yaml"
   - "--tx-phase-file"
-  - "tx-phases-sionna-1SDR.yml"
+  - "tx-phases-sionna-2.yml"
 
 # Server script behaviour
 test_connectivity: False             # set True if you want to test tile connectivity before continuing.
