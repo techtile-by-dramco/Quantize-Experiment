@@ -241,10 +241,10 @@ def rx_ref(usrp, rx_streamer, quit_event, duration, result_queue, start_time=Non
         )
 
         logger.debug(
-            "Frequency offset CH0:     %.2f Hz     %.2f Hz", fmt(freq_slope_ch0_before), fmt(freq_slope_ch0_after)
+            "Frequency offset CH0:     %.2f Hz     %.2f Hz", float(freq_slope_ch0_before), float(freq_slope_ch0_after)
         )
         logger.debug(
-            "Frequency offset CH1:     %.2f Hz     %.2f Hz", fmt(freq_slope_ch1_before), fmt(freq_slope_ch1_after)
+            "Frequency offset CH1:     %.2f Hz     %.2f Hz", float(freq_slope_ch1_before), float(freq_slope_ch1_after)
         )
 
         # logger.debug(
