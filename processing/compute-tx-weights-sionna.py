@@ -91,10 +91,6 @@ def load_target_location(settings_path: Path) -> np.ndarray:
     return np.array(coords, dtype=np.float32)
 
 
-target_location = load_target_location(experiment_settings_path)
-print(f"Using target_location from {experiment_settings_path}: {target_location.tolist()}")
-
-
 def parse_args():
     parser = argparse.ArgumentParser(description="Compute TX weights using Sionna RT.")
     parser.add_argument(
@@ -117,7 +113,30 @@ def parse_args():
         action="store_true",
         help="If grid-plane is enabled, render and save a power heatmap PNG.",
     )
+    parser.add_argument(
+        "--target-location",
+        type=str,
+        help="Override target_location as 'x,y,z' (comma-separated).",
+    )
+    parser.add_argument(
+        "--output-suffix",
+        type=str,
+        default="",
+        help="Suffix appended to output filenames (e.g. 'run1').",
+    )
     return parser.parse_args()
+
+
+def parse_target_location(raw_value: str) -> np.ndarray:
+    """Parse a 'x,y,z' string into a target_location array."""
+    parts = [p.strip() for p in raw_value.split(",") if p.strip()]
+    if len(parts) != 3:
+        raise ValueError("target_location must contain exactly three coordinates (x, y, z)")
+    try:
+        coords = [float(val) for val in parts]
+    except (TypeError, ValueError) as e:
+        raise ValueError("target_location coordinates must be numeric") from e
+    return np.array(coords, dtype=np.float32)
 
 
 def pick_gpu_with_max_free_memory() -> int | None:
@@ -183,6 +202,12 @@ def configure_mitsuba_variant(cpu_only: bool, gpu_index: int | None) -> str:
 
 
 args = parse_args()
+if args.target_location:
+    target_location = parse_target_location(args.target_location)
+    print(f"Using target_location from args: {target_location.tolist()}")
+else:
+    target_location = load_target_location(experiment_settings_path)
+    print(f"Using target_location from {experiment_settings_path}: {target_location.tolist()}")
 configure_mitsuba_variant(cpu_only=args.cpu_only, gpu_index=args.gpu_index)
 
 import sionna.rt as rt
@@ -508,11 +533,14 @@ for specular_order, SDR in zip(SPEC_ORDERS, SDRs):
             {"ch": 1, "ampl": float(0.8), "phase": float(w_phase_deg[i])}
         )
 
-    output_path = "../client/tx-weights-sionna.yml"
+    suffix = f"-{args.output_suffix}" if args.output_suffix else ""
+    output_path = f"../client/tx-weights-sionna{suffix}.yml"
     with open(output_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(out_full_dict, f, sort_keys=False)
 
-        output_path = f"../client/tx-phases-sionna-{specular_order}{'' if not SDR else 'SDR'}.yml"
+        output_path = (
+            f"../client/tx-phases-sionna-{specular_order}{'' if not SDR else 'SDR'}{suffix}.yml"
+        )
     with open(output_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(out_dict, f, sort_keys=False)
 

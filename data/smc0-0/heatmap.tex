@@ -1,0 +1,26 @@
+% PGFPlots includegraphics example for heatmap_bitmap.png
+\begin{tikzpicture}
+  \begin{axis}[
+    xmin=2.68689, xmax=3.92602,
+    ymin=1.13882, ymax=2.37795,
+    axis lines=box,
+    xlabel={x [m]},
+    ylabel={y [m]},
+    colorbar,
+    colormap name=inferno,
+    point meta min=1e-06,
+    point meta max=52.8613,
+    enlargelimits=false,
+    title={smc0-0 | mean power [uW]}
+  ]
+    \addplot graphics [includegraphics cmd=\pgfimage, xmin=2.68689, xmax=3.92602, ymin=1.13882, ymax=2.37795] {heatmap_bitmap.png};
+    % Target rectangle
+    \addplot [draw=cyan, thick] coordinates {
+      (3.19754,1.66784)
+      (3.36058,1.66784)
+      (3.36058,1.83088)
+      (3.19754,1.83088)
+      (3.19754,1.66784)
+    };
+  \end{axis}
+\end{tikzpicture}
