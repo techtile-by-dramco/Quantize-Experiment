@@ -42,7 +42,7 @@ client_script_args:
   - "--config-file"
   - "/home/pi/geometry-based-wireless-power-transfer/experiment-settings.yaml"
   - "--tx-phase-file"
-  - "tx-phases-smc2.yml"
+  - "tx-phases-smc0.yml"
 
 # Server script behaviour
 test_connectivity: False             # set True if you want to test tile connectivity before continuing.
