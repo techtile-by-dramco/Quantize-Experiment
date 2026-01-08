@@ -949,6 +949,12 @@ def parse_arguments():
     )
 
     parser.add_argument("--config-file", type=str)
+    parser.add_argument(
+        "--tx-phase-file",
+        type=str,
+        default="tx-phases-energy-ball.yml",
+        help="YAML file with per-host beamforming phases.",
+    )
 
     # Parse the command-line arguments
     args = parser.parse_args()
@@ -957,6 +963,7 @@ def parse_arguments():
     if args.ip:
         logger.debug(f"Setting server IP to: {args.ip}")
         SERVER_IP = args.ip
+    return args
 
 
 MEASUREMENTS_PER_TIMESLOT = 10
@@ -981,7 +988,7 @@ def get_next_phase(
 def main():
     global meas_id, file_name_state
 
-    parse_arguments()
+    args = parse_arguments()
 
     try:
         # Attempt to open and load calibration settings from the YAML file
@@ -1100,7 +1107,7 @@ def main():
         # -------------------------------------------------------------------------
         phi_offset = 0
         with open(
-            os.path.join(os.path.dirname(__file__), "tx-phases-energy-ball.yml"), "r"
+            os.path.join(os.path.dirname(__file__), args.tx_phase_file), "r"
         ) as phases_yaml:
             try:
                 phases_dict = yaml.safe_load(phases_yaml)
@@ -1108,7 +1115,7 @@ def main():
                     phi_BF = phases_dict[HOSTNAME]
                     logger.debug(f"Applying BF phase: {phi_BF}")
                 else:
-                    logger.error("Phase offset not found in tx-phases-benchmark.yml")
+                    logger.error("Phase offset not found in %s", args.tx_phase_file)
             except yaml.YAMLError as exc:
                 print(exc)
 
