@@ -2,11 +2,11 @@ folder: RANDOM
 aggregation: mean
 grid_res_m: 0.03260869565217391
 target_location: 3.279058, 1.749359, 0.2528133087158203
-max_power_uW: 3.101121
-max_cell_center_m: 2.751076, 1.864745
-max_cell_index: 12, 113
+max_power_uW: 2.772225
+max_cell_center_m: 2.754337, 1.913658
+max_cell_index: 6, 60
 max_cell_count: 1
-target_cell_index: 93, 95
-target_cell_center_m: 3.279337, 1.747354
-target_power_uW: 1.636037
-target_cell_count: 2
+target_cell_index: 46, 47
+target_cell_center_m: 3.276076, 1.744093
+target_power_uW: 1.669879
+target_cell_count: 6

@@ -2,11 +2,11 @@ folder: RECI-0
 aggregation: mean
 grid_res_m: 0.03260869565217391
 target_location: 3.279058, 1.749359, 0.2528133087158203
-max_power_uW: 62.847315
-max_cell_center_m: 3.313849, 1.716437
-max_cell_index: 96, 97
-max_cell_count: 0
-target_cell_index: 91, 102
-target_cell_center_m: 3.281241, 1.749046
+max_power_uW: 61.929194
+max_cell_center_m: 3.304067, 1.765350
+max_cell_index: 47, 52
+max_cell_count: 1
+target_cell_index: 45, 51
+target_cell_center_m: 3.277980, 1.752306
 target_power_uW: 46.065481
 target_cell_count: 0

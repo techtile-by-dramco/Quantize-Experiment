@@ -1,7 +1,7 @@
 % PGFPlots includegraphics example for heatmap_bitmap.png
 \begin{tikzpicture}
   \begin{axis}[
-    xmin=2.66421, xmax=3.91638,
+    xmin=2.66368, xmax=3.91585,
     ymin=1.11836, ymax=2.37053,
     axis lines=box,
     xlabel={x [m]},
@@ -9,11 +9,11 @@
     colorbar,
     colormap name=inferno,
     point meta min=1e-06,
-    point meta max=48.5615,
+    point meta max=51.9445,
     enlargelimits=false,
     title={FRIIS-0 | mean power [uW]}
   ]
-    \addplot graphics [includegraphics cmd=\pgfimage, xmin=2.66421, xmax=3.91638, ymin=1.11836, ymax=2.37053] {heatmap_bitmap.png};
+    \addplot graphics [includegraphics cmd=\pgfimage, xmin=2.66368, xmax=3.91585, ymin=1.11836, ymax=2.37053] {heatmap_bitmap.png};
     % Target rectangle
     \addplot [draw=cyan, thick] coordinates {
       (3.24645,1.71675)
