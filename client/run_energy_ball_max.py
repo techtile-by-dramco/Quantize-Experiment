@@ -234,18 +234,23 @@ def rx_ref(usrp, rx_streamer, quit_event, duration, result_queue, start_time=Non
 
         np.save(file_name_state, iq_samples)
 
-        phase_ch0, freq_slope_ch0 = tools.get_phases_and_apply_bandpass(
-            iq_samples[0, :]
+        phase_ch0, freq_slope_ch0_before, freq_slope_ch0_after = (
+            tools.get_phases_and_apply_bandpass(iq_samples[0, :])
         )
-        phase_ch1, freq_slope_ch1 = tools.get_phases_and_apply_bandpass(
-            iq_samples[1, :]
+        phase_ch1, freq_slope_ch1_before, freq_slope_ch1_after = (
+            tools.get_phases_and_apply_bandpass(iq_samples[1, :])
         )
 
-        logger.debug("Frequency offset CH0: %.4f", freq_slope_ch0 / (2 * np.pi))
-        logger.debug("Frequency offset CH1: %.4f", freq_slope_ch1 / (2 * np.pi))
-
-        logger.debug("Phase offset CH0: %.4f", np.rad2deg(phase_ch0).mean())
-        logger.debug("Phase offset CH1: %.4f", np.rad2deg(phase_ch1).mean())
+        logger.debug(
+            "Frequency offset CH0:     %.2f Hz     %.2f Hz",
+            float(freq_slope_ch0_before),
+            float(freq_slope_ch0_after),
+        )
+        logger.debug(
+            "Frequency offset CH1:     %.2f Hz     %.2f Hz",
+            float(freq_slope_ch1_before),
+            float(freq_slope_ch1_after),
+        )
 
         phase_diff = tools.to_min_pi_plus_pi(phase_ch0 - phase_ch1, deg=False)
 
