@@ -2,11 +2,11 @@ folder: smc2-0
 aggregation: mean
 grid_res_m: 0.03260869565217391
 target_location: 3.279058, 1.749359, 0.2528133087158203
-max_power_uW: 20.881215
-max_cell_center_m: 3.102721, 1.898095
-max_cell_index: 25, 47
-max_cell_count: 2
-target_cell_index: 36, 38
-target_cell_center_m: 3.282069, 1.751355
-target_power_uW: 0.245026
-target_cell_count: 2
+max_power_uW: 22.611711
+max_cell_center_m: 3.133699, 1.935595
+max_cell_index: 68, 124
+max_cell_count: 0
+target_cell_index: 90, 95
+target_cell_center_m: 3.277177, 1.746464
+target_power_uW: 0.439569
+target_cell_count: 0

@@ -56,7 +56,7 @@ def load_target_from_settings(settings_path=SETTINGS_PATH):
         return None
 
 
-def target_rect_from_xyz(target_xyz, rect_size=0.5 * WAVELENGTH):
+def target_rect_from_xyz(target_xyz, rect_size=0.2 * WAVELENGTH):
     """Rectangle of fixed size (default 0.5 lambda) centered on target x/y."""
     if not target_xyz or len(target_xyz) < 2:
         return None

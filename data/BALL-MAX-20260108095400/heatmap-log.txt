@@ -3,10 +3,10 @@ aggregation: mean
 grid_res_m: 0.03260869565217391
 target_location: 3.279058, 1.749359, 0.2528133087158203
 max_power_uW: 21.267564
-max_cell_center_m: 2.787736, 1.797081
-max_cell_index: 12, 41
-max_cell_count: 1
-target_cell_index: 42, 38
-target_cell_center_m: 3.276867, 1.748167
-target_power_uW: 4.619785
-target_cell_count: 5
+max_cell_center_m: 2.789367, 1.782407
+max_cell_index: 31, 101
+max_cell_count: 0
+target_cell_index: 106, 96
+target_cell_center_m: 3.278497, 1.749798
+target_power_uW: 4.759343
+target_cell_count: 0

@@ -2,11 +2,11 @@ folder: sionna2-0
 aggregation: mean
 grid_res_m: 0.03260869565217391
 target_location: 3.279058, 1.749359, 0.2528133087158203
-max_power_uW: 50.058583
-max_cell_center_m: 3.021369, 1.784202
-max_cell_index: 20, 40
-max_cell_count: 1
-target_cell_index: 36, 38
-target_cell_center_m: 3.282239, 1.751593
-target_power_uW: 2.585954
-target_cell_count: 2
+max_power_uW: 50.449056
+max_cell_center_m: 3.042565, 1.753224
+max_cell_index: 54, 96
+max_cell_count: 2
+target_cell_index: 90, 95
+target_cell_center_m: 3.277348, 1.746702
+target_power_uW: 2.815684
+target_cell_count: 0
