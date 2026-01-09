@@ -1,26 +1,21 @@
-% PGFPlots includegraphics example for heatmap_bitmap.png
+% PGFPlots includegraphics example for figures/RANDOM/heatmap_bitmap.png
 \begin{tikzpicture}
   \begin{axis}[
-    xmin=2.66955, xmax=3.94782,
-    ymin=1.12453, ymax=2.38974,
+    axis equal image,
+    xmin=2.66882, xmax=3.94708,
+    ymin=1.12416, ymax=2.38938,
     axis lines=box,
     xlabel={x [m]},
     ylabel={y [m]},
     colorbar,
     colormap name=inferno,
-    point meta min=4.9e-05,
-    point meta max=2.77223,
+    point meta min=0.568076,
+    point meta max=2.67469,
     enlargelimits=false,
     title={RANDOM | mean power [uW]}
   ]
-    \addplot graphics [includegraphics cmd=\pgfimage, xmin=2.66955, xmax=3.94782, ymin=1.12453, ymax=2.38974] {heatmap_bitmap.png};
-    % Target rectangle
-    \addplot [draw=cyan, thick] coordinates {
-      (3.24645,1.71675)
-      (3.31167,1.71675)
-      (3.31167,1.78197)
-      (3.24645,1.78197)
-      (3.24645,1.71675)
-    };
+    \addplot graphics [includegraphics cmd=\pgfimage, xmin=2.66882, xmax=3.94708, ymin=1.12416, ymax=2.38938] {figures/RANDOM/heatmap_bitmap.png};
+    % Target circle (radius = wavelength/2)
+    \draw[red,dashed,thick] (3.282,1.751) circle [radius=0.163043];
   \end{axis}
 \end{tikzpicture}

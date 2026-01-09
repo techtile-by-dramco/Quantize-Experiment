@@ -1,0 +1,18 @@
+folder: RANDOM
+aggregation: mean
+grid_res_m: 0.03260869565217391
+target_location: 3.282000, 1.751000, 0.2526
+max_power_uW: 2.674694
+max_cell_center_m: 2.714474, 1.874161
+max_cell_index: 3, 57
+max_cell_count: 32462
+total_samples: 250958
+sum_counts: 250958
+cells_total: 9506
+cells_nonzero: 9239
+min_cell_count: 1
+max_cell_count_all: 32462
+target_cell_index: 47, 48
+target_cell_center_m: 3.288387, 1.756770
+target_power_uW: 1.763745
+target_cell_count: 29

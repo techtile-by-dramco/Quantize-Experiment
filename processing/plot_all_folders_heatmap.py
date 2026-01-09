@@ -116,12 +116,12 @@ def filter_small_values(folder_path, positions, values, vs, threshold=SMALL_POWE
     if small.any():
         reports.append(f"{small.sum()} below {threshold:.1e} uW (min {vs[small].min():.2e})")
 
-    if reports:
-        dropped = len(vs) - drop_mask.sum()
-        print(f"{os.path.basename(folder_path)}: {', '.join(reports)} (removed {dropped})")
-        return positions[drop_mask], values[drop_mask], vs[drop_mask]
+    dropped = len(vs) - int(drop_mask.sum())
+    report = ", ".join(reports) if reports else ""
+    if dropped:
+        return positions[drop_mask], values[drop_mask], vs[drop_mask], dropped, report
 
-    return positions, values, vs
+    return positions, values, vs, 0, report
 
 
 def drop_consecutive_equal_values(positions, values):
@@ -145,10 +145,10 @@ def drop_consecutive_equal_values(positions, values):
             last_power = values[idx].pwr_pw
 
     if len(keep_idx) == len(values):
-        return positions, values
+        return positions, values, 0
 
-    print(f"Dropped {len(values) - len(keep_idx)} consecutive duplicates (power).")
-    return positions[keep_idx], values[keep_idx]
+    dropped = len(values) - len(keep_idx)
+    return positions[keep_idx], values[keep_idx], dropped
 
 
 def drop_nonincreasing_timestamps(positions, values):
@@ -168,6 +168,8 @@ def drop_nonincreasing_timestamps(positions, values):
         return positions, values
 
     keep_idx = [0]
+    equal_count = 0
+    decrease_count = 0
     last_t = getattr(positions[0], "t", None)
     for idx in range(1, len(positions)):
         curr_t = getattr(positions[idx], "t", None)
@@ -178,12 +180,19 @@ def drop_nonincreasing_timestamps(positions, values):
         if curr_t > last_t:
             keep_idx.append(idx)
             last_t = curr_t
+        elif curr_t == last_t:
+            equal_count += 1
+        else:
+            decrease_count += 1
 
     if len(keep_idx) == len(positions):
-        return positions, values
+        return positions, values, 0, {"equal": 0, "decrease": 0}
 
-    print(f"Dropped {len(positions) - len(keep_idx)} samples with non-increasing timestamps.")
-    return positions[keep_idx], values[keep_idx]
+    dropped = len(positions) - len(keep_idx)
+    return positions[keep_idx], values[keep_idx], dropped, {
+        "equal": equal_count,
+        "decrease": decrease_count,
+    }
 
 
 def heatmap_delta_db(curr_heatmap, base_heatmap):
@@ -322,6 +331,7 @@ def plot_heatmap(
             cmap=CMAP,
             extent=[x_edges[0], x_edges[-1], y_edges[0], y_edges[-1]],
         )
+        ax.set_aspect("equal", adjustable="box")
         if add_axes:
             agg_label = "Median" if agg == "median" else "Mean"
             ax.set_title(f"{os.path.basename(folder)} | {agg_label.lower()} power per cell [uW]")
@@ -343,7 +353,7 @@ def plot_heatmap(
                             linewidth=2,
                         )
                     )
-        if target_rect:
+        if target_rect and add_axes:
             x0, y0, w, h = target_rect
             ax.add_patch(
                 plt.Rectangle(
@@ -375,6 +385,56 @@ def plot_heatmap(
         plt.savefig(os.path.join(folder, bitmap_name), bbox_inches="tight", pad_inches=0)
         plt.close(fig2)
 
+    # Counts heatmap
+    fig_counts, ax_counts = plt.subplots()
+    img_counts = ax_counts.imshow(
+        counts.T,
+        origin="lower",
+        cmap="viridis",
+        extent=[x_edges[0], x_edges[-1], y_edges[0], y_edges[-1]],
+    )
+    ax_counts.set_aspect("equal", adjustable="box")
+    ax_counts.set_title(f"{os.path.basename(folder)} | samples per cell")
+    ax_counts.set_xlabel("x [m]")
+    ax_counts.set_ylabel("y [m]")
+    cbar_counts = fig_counts.colorbar(img_counts, ax=ax_counts)
+    cbar_counts.ax.set_ylabel("Samples per cell")
+    if target_rect and show:
+        x0, y0, w, h = target_rect
+        ax_counts.add_patch(
+            plt.Rectangle(
+                (x0, y0),
+                w,
+                h,
+                fill=False,
+                edgecolor="green",
+                linewidth=2,
+            )
+        )
+    fig_counts.tight_layout()
+    plt.savefig(os.path.join(folder, "heatmap_counts.png"))
+    if save_bitmap:
+        fig_counts_bitmap, ax_counts_bitmap = plt.subplots()
+        img_counts_bitmap = ax_counts_bitmap.imshow(
+            counts.T,
+            origin="lower",
+            cmap="viridis",
+            extent=[x_edges[0], x_edges[-1], y_edges[0], y_edges[-1]],
+        )
+        ax_counts_bitmap.set_aspect("equal", adjustable="box")
+        ax_counts_bitmap.axis("off")
+        fig_counts_bitmap.tight_layout(pad=0)
+        plt.savefig(
+            os.path.join(folder, "heatmap_counts_bitmap.png"),
+            bbox_inches="tight",
+            pad_inches=0,
+        )
+        plt.close(fig_counts_bitmap)
+    if show:
+        plt.show()
+    else:
+        plt.close(fig_counts)
+
     # dBm plot (vmin fixed to -30 dBm)
     heatmap_dbm = 10 * np.log10(np.clip(heatmap * 1e-6, 1e-15, None) / 1e-3)  # uW->W then to dBm
     fig_dbm, ax_dbm = plt.subplots()
@@ -385,6 +445,7 @@ def plot_heatmap(
         vmin=-30,
         extent=[x_edges[0], x_edges[-1], y_edges[0], y_edges[-1]],
     )
+    ax_dbm.set_aspect("equal", adjustable="box")
     ax_dbm.set_title(f"{os.path.basename(folder)} | power per cell [dBm]")
     ax_dbm.set_xlabel("x [m]")
     ax_dbm.set_ylabel("y [m]")
@@ -418,8 +479,8 @@ def _cell_center(i_x, i_y, x_edges, y_edges):
 
 
 def write_folder_log(folder, heatmap, counts, x_edges, y_edges, target_xyz, agg):
-    """Write a per-folder log with summary stats."""
-    log_path = os.path.join(folder, "heatmap-log.txt")
+    """Write a per-folder summary stats log."""
+    log_path = os.path.join(folder, "heatmap.txt")
     if np.isfinite(heatmap).any():
         max_idx = np.nanargmax(heatmap)
         i_x, i_y = np.unravel_index(max_idx, heatmap.shape)
@@ -431,6 +492,13 @@ def write_folder_log(folder, heatmap, counts, x_edges, y_edges, target_xyz, agg)
         max_val = float("nan")
         max_x = max_y = float("nan")
         max_count = 0
+
+    total_samples = int(counts.sum())
+    nonzero_counts = counts[counts > 0]
+    min_count = int(nonzero_counts.min()) if nonzero_counts.size else 0
+    max_count = int(nonzero_counts.max()) if nonzero_counts.size else 0
+    num_cells = int(counts.size)
+    num_nonzero_cells = int(nonzero_counts.size)
 
     with open(log_path, "w", encoding="utf-8") as fh:
         fh.write(f"folder: {os.path.basename(folder)}\n")
@@ -446,6 +514,12 @@ def write_folder_log(folder, heatmap, counts, x_edges, y_edges, target_xyz, agg)
         if i_x is not None and i_y is not None:
             fh.write(f"max_cell_index: {i_x}, {i_y}\n")
             fh.write(f"max_cell_count: {max_count}\n")
+        fh.write(f"total_samples: {total_samples}\n")
+        fh.write(f"sum_counts: {total_samples}\n")
+        fh.write(f"cells_total: {num_cells}\n")
+        fh.write(f"cells_nonzero: {num_nonzero_cells}\n")
+        fh.write(f"min_cell_count: {min_count}\n")
+        fh.write(f"max_cell_count_all: {max_count}\n")
         if target_xyz and len(target_xyz) >= 2:
             tx, ty = target_xyz[0], target_xyz[1]
             ti_x = np.digitize(tx, x_edges) - 1
@@ -490,6 +564,7 @@ def plot_diff_heatmap(
             vmax=vmax_db,
             extent=[x_edges[0], x_edges[-1], y_edges[0], y_edges[-1]],
         )
+        ax.set_aspect("equal", adjustable="box")
         if add_axes:
             title = title_override or f"{os.path.basename(folder)} - {baseline_name} | delta power per cell [dB]"
             ax.set_title(title)
@@ -497,7 +572,7 @@ def plot_diff_heatmap(
             ax.set_ylabel("y [m]")
             cbar = plt.colorbar(img, ax=ax)
             cbar.ax.set_ylabel("Delta vs baseline [dB]")
-        if target_rect:
+        if target_rect and add_axes:
             x0, y0, w, h = target_rect
             ax.add_patch(
                 plt.Rectangle(
@@ -563,6 +638,7 @@ def export_heatmap_tex(folder, x_edges, y_edges, heatmap, suffix="", title="", t
     suffix_str = f"_{suffix}" if suffix else ""
     tex_path = os.path.join(folder, f"heatmap{suffix_str}.tex")
     png_name = f"heatmap{suffix_str}_bitmap.png"
+    png_rel_path = f"figures/{os.path.basename(folder)}/{png_name}"
     xmin, xmax = x_edges[0], x_edges[-1]
     ymin, ymax = y_edges[0], y_edges[-1]
     title_tex = title.replace("_", "\\_") if title else ""
@@ -573,9 +649,10 @@ def export_heatmap_tex(folder, x_edges, y_edges, heatmap, suffix="", title="", t
     vmax_use = vmax if vmax is not None else vmax_val
 
     lines = [
-        f"% PGFPlots includegraphics example for {png_name}",
+        f"% PGFPlots includegraphics example for {png_rel_path}",
         "\\begin{tikzpicture}",
         "  \\begin{axis}[",
+        "    axis equal image,",
         f"    xmin={xmin:.6g}, xmax={xmax:.6g},",
         f"    ymin={ymin:.6g}, ymax={ymax:.6g},",
         "    axis lines=box,",
@@ -588,22 +665,16 @@ def export_heatmap_tex(folder, x_edges, y_edges, heatmap, suffix="", title="", t
         "    enlargelimits=false,",
         f"    title={{{title_tex}}}",
         "  ]",
-        f"    \\addplot graphics [includegraphics cmd=\\pgfimage, xmin={xmin:.6g}, xmax={xmax:.6g}, ymin={ymin:.6g}, ymax={ymax:.6g}] {{{png_name}}};",
+        f"    \\addplot graphics [includegraphics cmd=\\pgfimage, xmin={xmin:.6g}, xmax={xmax:.6g}, ymin={ymin:.6g}, ymax={ymax:.6g}] {{{png_rel_path}}};",
     ]
 
     if target_rect:
         x0, y0, w, h = target_rect
-        x1, y1 = x0 + w, y0 + h
+        cx, cy = x0 + w / 2.0, y0 + h / 2.0
         lines.extend(
             [
-                "    % Target rectangle",
-                "    \\addplot [draw=cyan, thick] coordinates {",
-                f"      ({x0:.6g},{y0:.6g})",
-                f"      ({x1:.6g},{y0:.6g})",
-                f"      ({x1:.6g},{y1:.6g})",
-                f"      ({x0:.6g},{y1:.6g})",
-                f"      ({x0:.6g},{y0:.6g})",
-                "    };",
+                "    % Target circle (radius = wavelength/2)",
+                f"    \\draw[red,dashed,thick] ({cx:.6g},{cy:.6g}) circle [radius={WAVELENGTH/2:.6g}];",
             ]
         )
 
@@ -659,7 +730,7 @@ def parse_args():
     )
     parser.add_argument(
         "--baseline-folder",
-        default="RANDOM",
+        default="RANDOM-1",
         help="Folder name to use as baseline for delta heatmap (default: RANDOM). Set empty to disable.",
     )
     parser.add_argument(
@@ -705,6 +776,38 @@ def print_run_summary(args, target_rect, baseline_folder_name, baseline_agg, gri
     )
 
 
+def print_drop_summary(
+    folder_name,
+    start_count,
+    end_count,
+    drop_ts,
+    drop_dups,
+    drop_small,
+    small_report,
+    ts_info=None,
+):
+    """Print a concise drop summary for a folder."""
+    dropped_total = start_count - end_count
+    parts = []
+    if drop_ts:
+        parts.append(f"ts={drop_ts}")
+        if ts_info:
+            if ts_info.get("equal"):
+                parts.append(f"ts_equal={ts_info['equal']}")
+            if ts_info.get("decrease"):
+                parts.append(f"ts_decrease={ts_info['decrease']}")
+    if drop_dups:
+        parts.append(f"dup={drop_dups}")
+    if drop_small:
+        parts.append(f"small={drop_small}")
+    if small_report:
+        parts.append(small_report)
+    detail = ", ".join(parts) if parts else "none"
+    print(
+        f"[{folder_name}] samples {start_count} -> {end_count} (dropped {dropped_total}; {detail})"
+    )
+
+
 def main():
     args = parse_args()
     if not os.path.isdir(DATA_DIR):
@@ -737,9 +840,9 @@ def main():
             try:
                 base_positions, base_values = load_folder(baseline_path)
                 if args.drop_consecutive_equal:
-                    base_positions, base_values = drop_consecutive_equal_values(base_positions, base_values)
+                    base_positions, base_values, _ = drop_consecutive_equal_values(base_positions, base_values)
                 base_vs = np.array([v.pwr_pw / 1e6 for v in base_values], dtype=float)
-                base_positions, base_values, base_vs = filter_small_values(
+                base_positions, base_values, base_vs, _, _ = filter_small_values(
                     baseline_path, base_positions, base_values, base_vs
                 )
                 base_xs = np.array([p.x for p in base_positions], dtype=float)
@@ -765,15 +868,32 @@ def main():
             print(e)
             continue
 
+        start_count = len(values)
+        drop_ts = drop_dups = drop_small = 0
+        ts_info = None
+        small_report = ""
+
         if args.drop_duplicate_timestamps:
-            positions, values = drop_nonincreasing_timestamps(positions, values)
+            positions, values, drop_ts, ts_info = drop_nonincreasing_timestamps(positions, values)
 
         if args.drop_consecutive_equal:
-            positions, values = drop_consecutive_equal_values(positions, values)
+            positions, values, drop_dups = drop_consecutive_equal_values(positions, values)
 
         vs = np.array([v.pwr_pw / 1e6 for v in values], dtype=float)  # uW
 
-        positions, values, vs = filter_small_values(folder_path, positions, values, vs)
+        positions, values, vs, drop_small, small_report = filter_small_values(
+            folder_path, positions, values, vs
+        )
+        print_drop_summary(
+            os.path.basename(folder_path),
+            start_count,
+            len(values),
+            drop_ts,
+            drop_dups,
+            drop_small,
+            small_report,
+            ts_info,
+        )
 
         xs = np.array([p.x for p in positions], dtype=float)
         ys = np.array([p.y for p in positions], dtype=float)

@@ -1,0 +1,18 @@
+folder: RECI-0
+aggregation: mean
+grid_res_m: 0.03260869565217391
+target_location: 3.282000, 1.751000, 0.2526
+max_power_uW: 59.086478
+max_cell_center_m: 3.317110, 1.739092
+max_cell_index: 48, 50
+max_cell_count: 3333
+total_samples: 42573
+sum_counts: 42573
+cells_total: 9504
+cells_nonzero: 7517
+min_cell_count: 1
+max_cell_count_all: 3333
+target_cell_index: 45, 51
+target_cell_center_m: 3.277980, 1.752135
+target_power_uW: 49.741041
+target_cell_count: 12
