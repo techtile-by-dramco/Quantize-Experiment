@@ -478,7 +478,17 @@ def _cell_center(i_x, i_y, x_edges, y_edges):
     return cx, cy
 
 
-def write_folder_log(folder, heatmap, counts, x_edges, y_edges, target_xyz, agg):
+def write_folder_log(
+    folder,
+    heatmap,
+    counts,
+    x_edges,
+    y_edges,
+    target_xyz,
+    agg,
+    first_cell=None,
+    first_pos=None,
+):
     """Write a per-folder summary stats log."""
     log_path = os.path.join(folder, "heatmap.txt")
     if np.isfinite(heatmap).any():
@@ -514,6 +524,10 @@ def write_folder_log(folder, heatmap, counts, x_edges, y_edges, target_xyz, agg)
         if i_x is not None and i_y is not None:
             fh.write(f"max_cell_index: {i_x}, {i_y}\n")
             fh.write(f"max_cell_count: {max_count}\n")
+        if first_cell is not None:
+            fh.write(f"first_cell_index: {first_cell[0]}, {first_cell[1]}\n")
+        if first_pos is not None:
+            fh.write(f"first_position: {first_pos[0]:.6f}, {first_pos[1]:.6f}\n")
         fh.write(f"total_samples: {total_samples}\n")
         fh.write(f"sum_counts: {total_samples}\n")
         fh.write(f"cells_total: {num_cells}\n")
@@ -898,6 +912,13 @@ def main():
         xs = np.array([p.x for p in positions], dtype=float)
         ys = np.array([p.y for p in positions], dtype=float)
 
+        if len(xs) and len(ys) and os.path.basename(folder_path).startswith("RECI"):
+            first_target = [float(xs[0]), float(ys[0])]
+            if target_vals and len(target_vals) > 2:
+                first_target.append(target_vals[2])
+            target_vals = first_target
+            target_rect = target_rect_from_xyz(target_vals)
+
         heatmap, counts, x_edges, y_edges, xi, yi = compute_heatmap(
             xs, ys, vs, grid_res, agg=args.agg
         )
@@ -980,7 +1001,19 @@ def main():
                 if len(recent_cells) == 5:
                     break
             recent_cells.reverse()
-        write_folder_log(folder_path, heatmap, counts, x_edges, y_edges, target_vals, args.agg)
+        first_cell = (int(xi[0]), int(yi[0])) if len(xi) else None
+        first_pos = (float(xs[0]), float(ys[0])) if len(xs) else None
+        write_folder_log(
+            folder_path,
+            heatmap,
+            counts,
+            x_edges,
+            y_edges,
+            target_vals,
+            args.agg,
+            first_cell=first_cell,
+            first_pos=first_pos,
+        )
         plot_heatmap(
             folder_path,
             heatmap,

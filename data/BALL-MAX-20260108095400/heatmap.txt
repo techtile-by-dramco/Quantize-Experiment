@@ -1,18 +1,20 @@
 folder: BALL-MAX-20260108095400
 aggregation: mean
 grid_res_m: 0.03260869565217391
-target_location: 3.282000, 1.751000, 0.2526
+target_location: 3.187527, 1.489010, 0.2528133087158203
 max_power_uW: 20.097530
 max_cell_center_m: 2.933607, 1.858702
 max_cell_index: 31, 57
 max_cell_count: 1915
+first_cell_index: 60, 47
+first_position: 3.311553, 1.726128
 total_samples: 34312
 sum_counts: 34312
 cells_total: 10379
 cells_nonzero: 6999
 min_cell_count: 1
 max_cell_count_all: 1915
-target_cell_index: 58, 49
-target_cell_center_m: 3.285781, 1.754354
-target_power_uW: 6.109195
-target_cell_count: 1915
+target_cell_index: 50, 29
+target_cell_center_m: 3.181433, 1.493485
+target_power_uW: 0.510296
+target_cell_count: 6

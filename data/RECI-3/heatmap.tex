@@ -1,0 +1,21 @@
+% PGFPlots includegraphics example for figures/RECI-3/heatmap_bitmap.png
+\begin{tikzpicture}
+  \begin{axis}[
+    axis equal image,
+    xmin=3.15538, xmax=3.36408,
+    ymin=1.67612, ymax=1.88481,
+    axis lines=box,
+    xlabel={x [m]},
+    ylabel={y [m]},
+    colorbar,
+    colormap name=inferno,
+    point meta min=0.0766581,
+    point meta max=60.1643,
+    enlargelimits=false,
+    title={RECI-3 | mean power [uW]}
+  ]
+    \addplot graphics [includegraphics cmd=\pgfimage, xmin=3.15538, xmax=3.36408, ymin=1.67612, ymax=1.88481] {figures/RECI-3/heatmap_bitmap.png};
+    % Target circle (radius = wavelength/2)
+    \draw[red,dashed,thick] (3.25596,1.77658) circle [radius=0.163043];
+  \end{axis}
+\end{tikzpicture}

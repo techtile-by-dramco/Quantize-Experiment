@@ -1,18 +1,20 @@
 folder: RANDOM-1
 aggregation: mean
 grid_res_m: 0.03260869565217391
-target_location: 3.282000, 1.751000, 0.2526
+target_location: 3.328091, 1.728644, 0.2528133087158203
 max_power_uW: 1.554391
 max_cell_center_m: 2.709355, 1.881425
 max_cell_index: 3, 58
 max_cell_count: 315
+first_cell_index: 36, 1
+first_position: 3.138550, 1.137882
 total_samples: 112306
 sum_counts: 112306
 cells_total: 9216
 cells_nonzero: 9014
 min_cell_count: 1
 max_cell_count_all: 315
-target_cell_index: 47, 48
-target_cell_center_m: 3.283268, 1.750990
-target_power_uW: 0.858120
-target_cell_count: 14
+target_cell_index: 50, 46
+target_cell_center_m: 3.322399, 1.724903
+target_power_uW: 0.667569
+target_cell_count: 23
