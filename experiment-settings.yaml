@@ -36,8 +36,8 @@ client_script_name: "run_gbwpt_random_phases.py"
 client_script_args:
   - "--config-file"
   - "/home/pi/geometry-based-wireless-power-transfer/experiment-settings.yaml"
-  # - "--tx-phase-file"
-  # - "tx-phases-friis.yml"
+  - "--tx-phase-file"
+  - "tx-phases-friis.yml"
 
 # Server script behaviour
 test_connectivity: False             # set True if you want to test tile connectivity before continuing.
