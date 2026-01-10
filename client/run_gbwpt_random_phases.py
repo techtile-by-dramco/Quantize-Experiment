@@ -927,8 +927,8 @@ def parse_arguments():
     parser.add_argument(
         "--tx-phase-file",
         type=str,
-        default="tx-phases-smc2-old.yml",
-        help="Path to TX phase YAML (default: tx-phases-smc2-old.yml)",
+        default="tx-phases-friis.yml",
+        help="Path to TX phase YAML (default: tx-phases-friis.yml)",
     )
 
     # Parse the command-line arguments
