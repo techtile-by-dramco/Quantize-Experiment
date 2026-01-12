@@ -41,7 +41,7 @@ for c in config["antennes"]:
     tile_name = c["tile"]
     out_dict[tile_name] = []
     out_full_dict[tile_name] = []
-    pos = [ch1["x"], ch1["y"], ch1["z"]]
+    pos = [ch1["x"], ch1["y"], ch1["z"]] 
     phase = 0
     ampl = AMPLTIUDE
     d_EN = np.linalg.norm(pos - target_location)  # Scalar distances (L x 1)

@@ -2,19 +2,19 @@
 \begin{tikzpicture}
   \begin{axis}[
     axis equal image,
-    xmin=2.66358, xmax=3.90271,
-    ymin=1.13353, ymax=2.37266,
+    xmin=2.66368, xmax=3.91585,
+    ymin=1.11822, ymax=2.3704,
     axis lines=box,
     xlabel={x [m]},
     ylabel={y [m]},
     colorbar,
     colormap name=inferno,
-    point meta min=1e-06,
-    point meta max=10.4804,
+    point meta min=0.0431875,
+    point meta max=0.989609,
     enlargelimits=false,
     title={RANDOM-ABS-REFL-0 | mean power [uW]}
   ]
-    \addplot graphics [includegraphics cmd=\pgfimage, xmin=2.66358, xmax=3.90271, ymin=1.13353, ymax=2.37266] {figures/RANDOM-ABS-REFL-0/heatmap_bitmap.png};
+    \addplot graphics [includegraphics cmd=\pgfimage, xmin=2.66368, xmax=3.91585, ymin=1.11822, ymax=2.3704] {figures/RANDOM-ABS-REFL-0/heatmap_bitmap.png};
     % Target circle (radius = wavelength/2)
     \draw[red,dashed,thick] (3.27906,1.74936) circle [radius=0.163043];
   \end{axis}

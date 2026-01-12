@@ -488,6 +488,10 @@ def write_folder_log(
     agg,
     first_cell=None,
     first_pos=None,
+    baseline_heatmap=None,
+    baseline_x_edges=None,
+    baseline_y_edges=None,
+    baseline_name=None,
 ):
     """Write a per-folder summary stats log."""
     log_path = os.path.join(folder, "heatmap.txt")
@@ -528,6 +532,8 @@ def write_folder_log(
             fh.write(f"first_cell_index: {first_cell[0]}, {first_cell[1]}\n")
         if first_pos is not None:
             fh.write(f"first_position: {first_pos[0]:.6f}, {first_pos[1]:.6f}\n")
+        if baseline_name:
+            fh.write(f"baseline_folder_used: {baseline_name}\n")
         fh.write(f"total_samples: {total_samples}\n")
         fh.write(f"sum_counts: {total_samples}\n")
         fh.write(f"cells_total: {num_cells}\n")
@@ -545,6 +551,22 @@ def write_folder_log(
                 fh.write(f"target_cell_center_m: {_cell_center(ti_x, ti_y, x_edges, y_edges)[0]:.6f}, {_cell_center(ti_x, ti_y, x_edges, y_edges)[1]:.6f}\n")
                 fh.write(f"target_power_uW: {float(tgt_power):.6f}\n")
                 fh.write(f"target_cell_count: {tgt_count}\n")
+                if (
+                    baseline_heatmap is not None
+                    and baseline_x_edges is not None
+                    and baseline_y_edges is not None
+                ):
+                    b_ix = np.digitize(tx, baseline_x_edges) - 1
+                    b_iy = np.digitize(ty, baseline_y_edges) - 1
+                    if 0 <= b_ix < baseline_heatmap.shape[0] and 0 <= b_iy < baseline_heatmap.shape[1]:
+                        base_power = baseline_heatmap[b_ix, b_iy]
+                        if np.isfinite(base_power) and base_power > 0 and np.isfinite(tgt_power) and tgt_power > 0:
+                            gain_lin = float(tgt_power / base_power)
+                            gain_db = float(10 * np.log10(gain_lin))
+                            fh.write(f"baseline_folder: {baseline_name or 'n/a'}\n")
+                            fh.write(f"baseline_target_power_uW: {float(base_power):.6f}\n")
+                            fh.write(f"target_gain_linear: {gain_lin:.6f}\n")
+                            fh.write(f"target_gain_db: {gain_db:.2f}\n")
             else:
                 fh.write("target_power_uW: n/a\n")
 
@@ -844,31 +866,43 @@ def main():
     if not folder_entries:
         raise ValueError(f"No subfolders found in {DATA_DIR}")
 
-    # Precompute baseline heatmap if requested
+    # Precompute default baseline heatmap if requested
     baseline_heatmap = baseline_x_edges = baseline_y_edges = None
     baseline_agg = "mean"
     baseline_folder_name = args.baseline_folder.strip() if args.baseline_folder else ""
-    if baseline_folder_name:
-        baseline_path = os.path.join(DATA_DIR, baseline_folder_name)
-        if os.path.isdir(baseline_path):
-            try:
-                base_positions, base_values = load_folder(baseline_path)
-                if args.drop_consecutive_equal:
-                    base_positions, base_values, _ = drop_consecutive_equal_values(base_positions, base_values)
-                base_vs = np.array([v.pwr_pw / 1e6 for v in base_values], dtype=float)
-                base_positions, base_values, base_vs, _, _ = filter_small_values(
-                    baseline_path, base_positions, base_values, base_vs
-                )
-                base_xs = np.array([p.x for p in base_positions], dtype=float)
-                base_ys = np.array([p.y for p in base_positions], dtype=float)
-                baseline_heatmap, _, baseline_x_edges, baseline_y_edges, _, _ = compute_heatmap(
-                    base_xs, base_ys, base_vs, GRID_RES, agg=baseline_agg
-                )
-            except Exception as exc:
-                print(f"Failed to build baseline from {baseline_path}: {exc}")
-                baseline_folder_name = ""
-        else:
+
+    def _build_baseline(baseline_name: str):
+        if not baseline_name:
+            return None, None, None
+        baseline_path = os.path.join(DATA_DIR, baseline_name)
+        if not os.path.isdir(baseline_path):
             print(f"Baseline folder not found: {baseline_path}")
+            return None, None, None
+        try:
+            base_positions, base_values = load_folder(baseline_path)
+            if args.drop_consecutive_equal:
+                base_positions, base_values, _ = drop_consecutive_equal_values(
+                    base_positions, base_values
+                )
+            base_vs = np.array([v.pwr_pw / 1e6 for v in base_values], dtype=float)
+            base_positions, base_values, base_vs, _, _ = filter_small_values(
+                baseline_path, base_positions, base_values, base_vs
+            )
+            base_xs = np.array([p.x for p in base_positions], dtype=float)
+            base_ys = np.array([p.y for p in base_positions], dtype=float)
+            base_heatmap, _, base_x_edges, base_y_edges, _, _ = compute_heatmap(
+                base_xs, base_ys, base_vs, GRID_RES, agg=baseline_agg
+            )
+            return base_heatmap, base_x_edges, base_y_edges
+        except Exception as exc:
+            print(f"Failed to build baseline from {baseline_path}: {exc}")
+            return None, None, None
+
+    if baseline_folder_name:
+        baseline_heatmap, baseline_x_edges, baseline_y_edges = _build_baseline(
+            baseline_folder_name
+        )
+        if baseline_heatmap is None:
             baseline_folder_name = ""
 
     print_run_summary(args, target_rect, baseline_folder_name, baseline_agg, grid_res)
@@ -881,6 +915,18 @@ def main():
         except ValueError as e:
             print(e)
             continue
+
+        baseline_override_name = baseline_folder_name
+        baseline_override_path = os.path.join(folder_path, "baseline.txt")
+        if os.path.isfile(baseline_override_path):
+            try:
+                with open(baseline_override_path, "r", encoding="utf-8") as fh:
+                    baseline_override_name = fh.read().strip()
+            except Exception as exc:
+                print(f"Failed to read baseline override in {baseline_override_path}: {exc}")
+                baseline_override_name = baseline_folder_name
+        if not baseline_override_name:
+            baseline_override_name = ""
 
         start_count = len(values)
         drop_ts = drop_dups = drop_small = 0
@@ -937,55 +983,85 @@ def main():
             )
 
         # If baseline available, compute aligned heatmap and plot delta
-        if baseline_heatmap is not None and baseline_x_edges is not None and baseline_y_edges is not None:
+        if baseline_override_name:
+            if baseline_override_name == baseline_folder_name and baseline_heatmap is not None:
+                curr_baseline_heatmap = baseline_heatmap
+                curr_baseline_x_edges = baseline_x_edges
+                curr_baseline_y_edges = baseline_y_edges
+            else:
+                curr_baseline_heatmap, curr_baseline_x_edges, curr_baseline_y_edges = _build_baseline(
+                    baseline_override_name
+                )
+        else:
+            curr_baseline_heatmap = curr_baseline_x_edges = curr_baseline_y_edges = None
+
+        if (
+            curr_baseline_heatmap is not None
+            and curr_baseline_x_edges is not None
+            and curr_baseline_y_edges is not None
+        ):
             aligned_heatmap, _, _, _, _, _ = compute_heatmap(
-                xs, ys, vs, grid_res, agg=baseline_agg, x_edges=baseline_x_edges, y_edges=baseline_y_edges
+                xs,
+                ys,
+                vs,
+                grid_res,
+                agg=baseline_agg,
+                x_edges=curr_baseline_x_edges,
+                y_edges=curr_baseline_y_edges,
             )
             if args.fill_empty:
                 aligned_heatmap = fill_empty_cells_nearest(aligned_heatmap)
-                baseline_heatmap = fill_empty_cells_nearest(baseline_heatmap)
-            diff_map = heatmap_delta_db(aligned_heatmap, baseline_heatmap)
-            global_gain, target_gain = gain_stats(aligned_heatmap, baseline_heatmap, baseline_x_edges, baseline_y_edges, target_rect)
+                curr_baseline_heatmap = fill_empty_cells_nearest(curr_baseline_heatmap)
+            diff_map = heatmap_delta_db(aligned_heatmap, curr_baseline_heatmap)
+            global_gain, target_gain = gain_stats(
+                aligned_heatmap,
+                curr_baseline_heatmap,
+                curr_baseline_x_edges,
+                curr_baseline_y_edges,
+                target_rect,
+            )
             gain_title = None
             if global_gain:
                 gain_title = f"avg {global_gain['avg_db']:.1f}dB / max {global_gain['max_db']:.1f}dB"
                 print(
-                    f"Gain vs {baseline_folder_name}: avg {global_gain['avg_db']:.2f} dB ({global_gain['avg_lin']:.2f}x), "
+                    f"Gain vs {baseline_override_name}: avg {global_gain['avg_db']:.2f} dB ({global_gain['avg_lin']:.2f}x), "
                     f"max {global_gain['max_db']:.2f} dB ({global_gain['max_lin']:.2f}x)"
                 )
             if target_gain:
                 target_str = f"target avg {target_gain['avg_db']:.1f}dB / max {target_gain['max_db']:.1f}dB"
                 gain_title = f"{gain_title} | {target_str}" if gain_title else target_str
                 print(
-                    f"Target gain vs {baseline_folder_name}: avg {target_gain['avg_db']:.2f} dB ({target_gain['avg_lin']:.2f}x), "
+                    f"Target gain vs {baseline_override_name}: avg {target_gain['avg_db']:.2f} dB ({target_gain['avg_lin']:.2f}x), "
                     f"max {target_gain['max_db']:.2f} dB ({target_gain['max_lin']:.2f}x)"
                 )
             plot_diff_heatmap(
                 folder_path,
-                baseline_folder_name,
+                baseline_override_name,
                 diff_map,
-                baseline_x_edges,
-                baseline_y_edges,
+                curr_baseline_x_edges,
+                curr_baseline_y_edges,
                 target_rect=target_rect,
                 show=not args.save_only,
                 save_bitmap=args.export_csv,
-                png_name=f"heatmap_vs_{baseline_folder_name}_dB.png",
-                bitmap_name=f"heatmap_vs_{baseline_folder_name}_dB_bitmap.png",
+                png_name=f"heatmap_vs_{baseline_override_name}_dB.png",
+                bitmap_name=f"heatmap_vs_{baseline_override_name}_dB_bitmap.png",
                 title_override=gain_title,
             )
             if args.export_csv:
-                suffix = f"vs_{baseline_folder_name}_dB"
-                export_heatmap_csv(folder_path, diff_map, baseline_x_edges, baseline_y_edges, suffix=suffix)
+                suffix = f"vs_{baseline_override_name}_dB"
+                export_heatmap_csv(
+                    folder_path, diff_map, curr_baseline_x_edges, curr_baseline_y_edges, suffix=suffix
+                )
                 export_heatmap_tex(
                     folder_path,
-                    baseline_x_edges,
-                    baseline_y_edges,
+                    curr_baseline_x_edges,
+                    curr_baseline_y_edges,
                     diff_map,
                     suffix=suffix,
-                    title=f"{os.path.basename(folder_path)} - {baseline_folder_name} [dB]{' | ' + gain_title if gain_title else ''}",
+                    title=f"{os.path.basename(folder_path)} - {baseline_override_name} [dB]{' | ' + gain_title if gain_title else ''}",
                     target_rect=target_rect,
-                    vmin=-10 * np.log10(42),
-                    vmax=10 * np.log10(42),
+                    vmin=-10 * np.log10(42)-6,
+                    vmax=10 * np.log10(42)+6,
                 )
 
         recent_cells = None
@@ -1013,6 +1089,10 @@ def main():
             args.agg,
             first_cell=first_cell,
             first_pos=first_pos,
+            baseline_heatmap=curr_baseline_heatmap,
+            baseline_x_edges=curr_baseline_x_edges,
+            baseline_y_edges=curr_baseline_y_edges,
+            baseline_name=baseline_override_name,
         )
         plot_heatmap(
             folder_path,

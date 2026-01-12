@@ -1,20 +1,25 @@
 folder: FRIIS-ABS-REFL-0
 aggregation: mean
 grid_res_m: 0.03260869565217391
-target_location: 3.255969, 1.776655, 0.2528133087158203
+target_location: 3.281179, 1.751308, 0.2528133087158203
 max_power_uW: 18.410206
 max_cell_center_m: 3.322099, 1.711888
 max_cell_index: 50, 45
 max_cell_count: 211
 first_cell_index: 45, 50
 first_position: 3.255835, 1.776638
+baseline_folder_used: RANDOM-ABS-REFL-0
 total_samples: 256497
 sum_counts: 256497
 cells_total: 9216
 cells_nonzero: 9004
 min_cell_count: 1
 max_cell_count_all: 211
-target_cell_index: 45, 50
-target_cell_center_m: 3.256882, 1.777106
-target_power_uW: 9.169446
-target_cell_count: 211
+target_cell_index: 47, 48
+target_cell_center_m: 3.282969, 1.751019
+target_power_uW: 13.666381
+target_cell_count: 53
+baseline_folder: RANDOM-ABS-REFL-0
+baseline_target_power_uW: 0.291982
+target_gain_linear: 46.805629
+target_gain_db: 16.70

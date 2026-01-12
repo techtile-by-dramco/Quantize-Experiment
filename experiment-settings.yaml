@@ -30,14 +30,14 @@ extra_packages:                     # list of extra packages to be installed on 
   - python3-zmq
 
 # Name of the script to run on the clients (make sure it is in the <your-repo>/client folder)
-client_script_name: "run_gbwpt_random_phases.py"
+# client_script_name: "run_gbwpt_random_phases.py"
 # client_script_name: "run_gbwpt_phases.py"
-# client_script_name: "run_reciprocity.py"
+client_script_name: "run_reciprocity.py"
 client_script_args:
   - "--config-file"
   - "/home/pi/geometry-based-wireless-power-transfer/experiment-settings.yaml"
-  - "--tx-phase-file"
-  - "tx-phases-friis.yml"
+  # - "--tx-phase-file"
+  # - "tx-phases-friis.yml"
 
 # Server script behaviour
 test_connectivity: False             # set True if you want to test tile connectivity before continuing.
@@ -47,6 +47,10 @@ experiment_config:
   target_location: 3.27905810546875, 1.7493585205078126, 0.2528133087158203
   # target moved to center of LoS: max at: 3.037429, 1.751323 [0.24162910546]
   # new LoS target becomes: 3.52068721094 1.7493585205078126, 0.2528133087158203
+
+
+scope:
+  ip: "192.108.1.219"
 
 # Energy Profiler settings
 ep:

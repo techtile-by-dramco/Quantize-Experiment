@@ -2,19 +2,24 @@ folder: RANDOM-ABS-REFL-0
 aggregation: mean
 grid_res_m: 0.03260869565217391
 target_location: 3.279058, 1.749359, 0.2528133087158203
-max_power_uW: 10.480363
-max_cell_center_m: 3.857055, 1.609617
-max_cell_index: 91, 36
-max_cell_count: 190
-first_cell_index: 47, 47
-first_position: 3.281323, 1.751355
-total_samples: 15909
-sum_counts: 15909
-cells_total: 9025
-cells_nonzero: 6405
+max_power_uW: 0.989609
+max_cell_center_m: 3.778893, 1.124743
+max_cell_index: 85, 0
+max_cell_count: 376
+first_cell_index: 73, 1
+first_position: 3.620781, 1.135585
+baseline_folder_used: RANDOM-1
+total_samples: 93402
+sum_counts: 93402
+cells_total: 9216
+cells_nonzero: 9087
 min_cell_count: 1
-max_cell_count_all: 190
-target_cell_index: 47, 47
-target_cell_center_m: 3.283142, 1.753095
-target_power_uW: 0.266119
-target_cell_count: 190
+max_cell_count_all: 376
+target_cell_index: 47, 48
+target_cell_center_m: 3.283241, 1.750830
+target_power_uW: 0.295923
+target_cell_count: 159
+baseline_folder: RANDOM-1
+baseline_target_power_uW: 0.843029
+target_gain_linear: 0.351024
+target_gain_db: -4.55

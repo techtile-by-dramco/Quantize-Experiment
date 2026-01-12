@@ -8,6 +8,7 @@ max_cell_index: 21, 22
 max_cell_count: 44
 first_cell_index: 12, 4
 first_position: 3.187527, 1.489010
+baseline_folder_used: RANDOM-1
 total_samples: 22374
 sum_counts: 22374
 cells_total: 2256
@@ -18,3 +19,7 @@ target_cell_index: 12, 4
 target_cell_center_m: 3.190613, 1.483013
 target_power_uW: 0.016289
 target_cell_count: 11
+baseline_folder: RANDOM-1
+baseline_target_power_uW: 0.561757
+target_gain_linear: 0.028997
+target_gain_db: -15.38
