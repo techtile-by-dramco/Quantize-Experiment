@@ -1034,7 +1034,11 @@ def parse_arguments():
 
     # Add the --phase argument
     parser.add_argument(
-        "--phase", type=int, help="Phase value for transmission", required=True
+        "--phase",
+        type=int,
+        default=0,
+         help="Phase value for transmission",
+        required=True,
     )
     parser.add_argument(
         "--ip", type=str, help="ip address of the server", required=False
