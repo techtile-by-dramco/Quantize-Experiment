@@ -1064,16 +1064,11 @@ def main():
     # Now tx_phase can be used globally
     print(f"The phase value is set to: {tx_phase}")
 
-    _connect = True
     try:
         usrp = uhd.usrp.MultiUSRP("fpga=usrp_b210_fpga.bin")
         logger.info("Using Device: %s", usrp.get_pp_string())
         tx_streamer, _ = setup(usrp)
         quit_event = threading.Event()
-
-        _connect = False
-
-        tx_thr = tx_meta_thr = None
 
         start_time = START_PILOT_1
         if pilot_num == 2:
