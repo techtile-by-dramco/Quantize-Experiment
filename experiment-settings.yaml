@@ -52,7 +52,7 @@ experiment_config:
 
 scope:
   ip: "192.108.1.219"
-  channels: [1]
+  channels: [1,2]
 
 # Energy Profiler settings
 ep:

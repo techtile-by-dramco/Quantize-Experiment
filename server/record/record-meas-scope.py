@@ -15,7 +15,6 @@ import signal
 import sys
 
 import numpy as np
-import zmq
 
 # ****************************************************************************************** #
 #                                           CONFIG                                           #
@@ -23,7 +22,7 @@ import zmq
 
 SAVE_EVERY = 60.0  # seconds
 FOLDER = (
-    "RANDOM-ABS-REFL-0"  # subfolder inside data/where to save measurement data
+    "AHMET-Phase2-RF-0"  # subfolder inside data/where to save measurement data
 )
 TIMESTAMP = round(time())
 DEFAULT_DURATION = None  # seconds, override via CLI
@@ -86,8 +85,11 @@ def _parse_duration(value: Optional[str]) -> Optional[float]:
 
 max_duration = _parse_duration(args.duration) or DEFAULT_DURATION
 positioner = PositionerClient(config=settings["positioning"], backend="zmq")
-scope = Scope(settings["scope"])
+scope = Scope(config=settings["scope"])
 
+import logging
+
+scope.logger.setLevel(logging.ERROR)
 # context = zmq.Context()
 # iq_socket = context.socket(zmq.PUB)
 # iq_socket.bind("tcp://*:50001")
@@ -202,7 +204,7 @@ def _load_existing_data():
                 pos.x,
                 pos.y,
                 pos.z,
-                d.pwr_pw / 1e6
+                d
             )
         total += len(existing_positions)
     print(f"Loaded {total} existing samples from {save_dir}.")
@@ -211,6 +213,10 @@ def _load_existing_data():
 # ****************************************************************************************** #
 #                                           MAIN                                             #
 # ****************************************************************************************** #
+class scope_data(object):
+    def __init__(self, pwr_pw):
+        self.pwr_pw = pwr_pw
+
 
 try:
     print("Starting positioner and RFEP...")
@@ -221,17 +227,21 @@ try:
     start_time = time()
 
     while True:
-        val = scope.get_power_dBm()
+        vals = scope.get_power_Watt()*1e12
         pos = positioner.get_data()
+
+        d1 = scope_data(vals[0])
+        d2 = scope_data(vals[1])
 
         # print(d, pos)
 
-        if val is not None and pos is not None:
+        if vals[0] is not None and pos is not None:
             positions.append(pos)
-            values.append(val)
+            values.append(d1)
 
-            plt.measurements_rt(pos.x, pos.y, pos.z, val)
+            plt.measurements_rt(pos.x, pos.y, pos.z, d1.pwr_pw / 1e6)
             print("x", end="", flush=True)
+            print(vals[1])
         else:
             print(".", end="", flush=True)
 

@@ -17,6 +17,12 @@ try:
 except Exception:
     HAS_DT = False
 
+
+class scope_data(object):
+    def __init__(self, pwr_pw):
+        self.pwr_pw = pwr_pw
+
+
 WAVELENGTH = 3e8 / 920e6  # meters
 
 GRID_RES = 0.1 * WAVELENGTH  # meters (default; overridden by --grid-res-lambda)
@@ -442,7 +448,7 @@ def plot_heatmap(
         heatmap_dbm.T,
         origin="lower",
         cmap=CMAP,
-        vmin=-30,
+        # vmin=-80,
         extent=[x_edges[0], x_edges[-1], y_edges[0], y_edges[-1]],
     )
     ax_dbm.set_aspect("equal", adjustable="box")
