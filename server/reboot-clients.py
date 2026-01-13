@@ -44,7 +44,6 @@ halt_on_connectivity_failure = experiment_settings.get("halt_on_connectivity_fai
 # host list can be used to identify individual tiles from group names
 # We don't need it to run ansible playbooks, but it is a first check to see if the tiles are specified correctly
 host_list = get_target_hosts(config.INVENTORY_PATH, limit=tiles, suppress_warnings=True)
-tiles = " ".join(host_list)
 print("Working on", len(host_list) ,"tile(s):", tiles)
 
 # First we test connectivity

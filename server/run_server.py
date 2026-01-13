@@ -1,34 +1,10 @@
-#  ____  ____      _    __  __  ____ ___
-# |  _ \|  _ \    / \  |  \/  |/ ___/ _ \
-# | | | | |_) |  / _ \ | |\/| | |  | | | |
-# | |_| |  _ <  / ___ \| |  | | |__| |_| |
-# |____/|_| \_\/_/   \_\_|  |_|\____\___/
-#                           research group
-#                             dramco.be/
-# 
-#    KU Leuven - Technology Campus Gent,
-#    Gebroeders De Smetstraat 1,
-#    B-9000 Gent, Belgium
-# 
-#          File: run_server.py
-#       Created: 2025-12-12
-#        Author: Geoffrey Ottoy
-# 
-#   Description: This script coordinates a distributed experiment by running
-#     a background server that tracks a set of target hosts and their trans-
-#     mission state. It waits until all expected hosts are connected and have
-#     completed their current tx phase, then broadcasts a synchronized 
-#     “tx-start” command to initiate the next transmission round. This process
-#     repeats until the server is shut down.
-#
-
-from utils.server_com import Server
-import signal
-import time
+from utils.server_com import ServerSideCom
+from utils.usrp_control import USRP_Control
+import config
 import os
 import sys
 import yaml
-import config
+import time
 
 # ---------------------------------------------------------
 # Set up paths and configuration
@@ -63,107 +39,35 @@ if len(tiles) == 0:
 # Retrieve the host list for the targeted tiles
 host_list = get_target_hosts(config.INVENTORY_PATH, limit=tiles, suppress_warnings=True)
 
-# Initialize the transmission status dictionary for each host
-# "tx-done" indicates whether the host has completed its last transmission
-tx_status = {host: {"tx-done": True} for host in host_list}
-
 # ---------------------------------------------------------
 # Configure server parameters
 # ---------------------------------------------------------
-server_settings = experiment_settings.get("server", "")
-# Heartbeat interval for client liveness detection
-heartbeat_interval = experiment_settings.get("heartbeat_interval", "") + 10
-messaging_port = server_settings.get("messaging_port", "")
-sync_port = server_settings.get("sync_port", "")
 
-# Instantiate the server object
-server = Server(
-    msg_port=messaging_port,
-    sync_port=sync_port,
-    heartbeat_timeout=heartbeat_interval,
-    silent=True  # suppress verbose server output
-)
+# Instantiate server object for communication with the tiles
+server = ServerSideCom(settings_path)
+# Instantiate usrp object for communication with the tiles' usrps
+usrp = USRP_Control(server)
+
+server.start() # optional
+usrp.start()
+usrp.set_required_hosts(host_list)
 
 # ---------------------------------------------------------
-# Signal handling for graceful shutdown
+# Main loop: monitor client connections and manage transmissions
 # ---------------------------------------------------------
-def handle_signal(signum, frame):
-    """Stop the server when a SIGINT or SIGTERM is received."""
-    print("\nReceived signal, stopping server...")
-    server.stop()
-
-signal.signal(signal.SIGINT, handle_signal)
-signal.signal(signal.SIGTERM, handle_signal)
-
-# ---------------------------------------------------------
-# Callback function for "tx-done" messages from clients
-# ---------------------------------------------------------
-def handle_tx_done(from_host, args):
-    """Mark the host's transmission as complete in the tx_status dict."""
-    for h in tx_status:
-        if h == from_host:
-            tx_status[h]['tx-done'] = True
-
-# ---------------------------------------------------------
-# Main execution block
-# ---------------------------------------------------------
-if __name__ == "__main__":
-    # Register the "tx-done" callback with the server
-    server.on("tx-done", handle_tx_done)
-
-    # Start the server in a background thread (non-blocking)
-    server.start()
-    print("Server running in background thread.")
-
-    # Retrieve experiment duration from settings (default to 10s)
-    duration = experiment_settings.get("duration", 10)
-
-    # ---------------------------------------------------------
-    # Main loop: monitor client connections and manage transmissions
-    # ---------------------------------------------------------
+try:
+    usrp.wait_until_connected(timeout_s=30)
     try:
-        while server.running:
-            # Get currently connected clients from the server
-            connected_clients = server.get_connected()
+        usrp.send_command(usrp.Command.SYNC, tiles=["A05"], at=10, dir="RX", timeout_s=1)
+    except TimeoutError as e:
+        print("this timemout is expected")
+    usrp.send_command(usrp.Command.SYNC, at=10, dir="RX", timeout_s=10)
+    print("sync completed")
+    time.sleep(10)
+except KeyboardInterrupt:
+    # Catch Ctrl+C in main thread for clean shutdown
+    pass
 
-            # Check which hosts in tx_status are missing from the connected clients
-            missing = [h for h in tx_status if h.encode() not in connected_clients]
-
-            if missing:
-                # If some hosts are not connected, print waiting message
-                print("Waiting on hosts:", missing)
-
-                # Ensure all tx-done flags are set to True
-                # (i.e., no ongoing transmission)
-                for h in tx_status:
-                    tx_status[h]['tx-done'] = True
-
-                # Sleep briefly before checking again
-                time.sleep(1)
-            else:
-                # All hosts are connected, check if all transmissions are done
-                all_done = all(v["tx-done"] for v in tx_status.values())
-
-                if all_done:
-                    # All hosts are ready for the next transmission
-                    print("All hosts are ready")
-                    print(" -> Sending SYNC ...")
-
-                    # Reset tx-done flags to False before starting a new transmission
-                    for h in tx_status:
-                        tx_status[h]['tx-done'] = False
-
-                    # Broadcast "tx-start" message to all clients with the duration
-                    if server.running:
-                        server.broadcast("SYNC", "testrun")
-                    else:
-                        print("Server not running.")
-                        
-    except KeyboardInterrupt:
-        # Catch Ctrl+C in main thread for clean shutdown
-        pass
-
-    # Stop and join the server thread before exiting
-    server.stop()
-    server.join()
-    print("Server terminated.")
+server.stop()
+server.join()
+print("Server terminated.")

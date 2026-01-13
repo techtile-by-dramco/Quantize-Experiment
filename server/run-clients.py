@@ -29,7 +29,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.start and args.stop:
-    print("Conflicting arguments: --start & --stop")
+    print("Conflicting arguments: --sart & --stop")
     parser.print_help()
     sys.exit(config.ERRORS["ARGUMENT_ERROR"])
 
@@ -61,9 +61,6 @@ halt_on_connectivity_failure = experiment_settings.get("halt_on_connectivity_fai
 # host list can be used to identify individual tiles from group names
 # We don't need it to run ansible playbooks, but it is a first check to see if the tiles are specified correctly
 host_list = get_target_hosts(config.INVENTORY_PATH, limit=tiles, suppress_warnings=True)
-
-# reassign tiles, wrongly specified tiles have been removed from list
-tiles = " ".join(host_list)
 print("Working on", len(host_list) ,"tile(s):", tiles)
 
 # First we test connectivity
