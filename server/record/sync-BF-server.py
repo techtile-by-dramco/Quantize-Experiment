@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 # usage: sync_server.py <delay> <num_subscribers>
 
+# sudo fuser -k 50001/tcp
+
 # VALUE "num_subscribers" --> IMPORTANT --> The server waits until all subscribers have sent their "alive" or ready message before starting a measurement.
 
 import argparse
