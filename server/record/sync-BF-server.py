@@ -122,11 +122,12 @@ with open(output_path, "w") as f:
     # Write experiment metadata to the YAML file
     f.write(f"experiment: {unique_id}\n")
     f.write(f"num_subscribers: {num_subscribers}\n")
+    f.write(f"num_pilots: {num_pilots}\n")
     f.write(f"measurments:\n")
 
     while True:
         # Wait for all subscribers to send a message
-        print(f"Waiting for {num_subscribers} subscribers to send a message...")
+        print(f"Waiting for {num_subscribers+num_pilots} subscribers to send a message...")
 
         # Start a new measurement entry in the YAML file
         f.write(f"  - meas_id: {meas_id}\n")
