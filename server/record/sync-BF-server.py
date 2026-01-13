@@ -14,6 +14,7 @@ from datetime import datetime
 from helper import *
 import json
 import numpy as np
+import cvxpy as cp
 
 # =============================================================================
 #                           Experiment Configuration
@@ -118,7 +119,142 @@ csi_poller.register(router_socket, zmq.POLLIN)
 # Data storage
 identities = []
 hostnames = []
-csi_data = []
+phi_P1s = []
+phi_P2s = []
+
+
+def dominant_eigenvector(X):
+    # Compute the dominant eigenvector (eigenvector of the largest eigenvalue)
+    eigvals, eigvecs = np.linalg.eigh(X)
+    idx = np.argmax(eigvals)
+    return eigvecs[:, idx]
+
+
+# %%
+def sdr_solver(H_DL, H_BD, M, scale, alpha, P_max):
+    # For the given channel coefficients, solve the proposed problem and provide proposed BF vector
+    # Compute M_BD and M_DL
+    M_BD = H_BD.conj().T @ H_BD
+    M_DL = H_DL.conj().T @ H_DL
+
+    # Define the semidefinite variable (Hermitian)
+    X_new = cp.Variable((M, M), hermitian=True)
+
+    # Objective: maximize scale * trace(M_BD * X_new)
+    objective = cp.Maximize(scale * cp.real(cp.trace(M_BD @ X_new)))
+
+    # Constraints
+    constraints = [
+        cp.real(cp.trace(scale * (M_DL - alpha * M_BD) @ X_new)) <= 0,
+        X_new >> 0,  # Hermitian positive semidefinite constraint
+    ]
+
+    # Add per-antenna power constraints
+    for i in range(M):
+        constraints.append(cp.real(X_new[i, i]) <= P_max)
+
+    # Problem definition and solve
+    prob = cp.Problem(objective, constraints)
+    prob.solve(
+        solver=cp.SCS, verbose=False
+    )  # You can try other solvers, e.g., 'CVXOPT' or 'MOSEK' or 'SCS'
+
+    if X_new.value is None:
+        raise ValueError("Optimization did not converge.")
+
+    # Extract dominant eigenvector
+    w_optimum = dominant_eigenvector(X_new.value)
+
+    # Normalize the beamforming vector
+    w = w_optimum / np.max(np.abs(w_optimum))
+
+    return w
+
+
+# %%
+def cvx_solver(H_DL, h_C, M, scale, alpha, P_max):
+    # For the given channel coefficients, solve the proposed problem and provide proposed BF vector
+
+    # Define the semidefinite variable (Hermitian)
+    x = cp.Variable(M, complex=True)
+
+    # Objective: maximize scale * trace(M_BD * X_new)
+    objective = cp.Maximize(scale * cp.real(h_C.T @ x))
+
+    # Constraints
+    constraints = []
+
+    # Null constraint: scale * H_DL_prime * x == 0
+    constraints.append(scale * H_DL @ x == 0)
+
+    # Add per-antenna power constraints
+    for i in range(M):
+        constraints.append(cp.abs(x[i]) <= np.sqrt(P_max))
+
+    # Problem definition and solve
+    prob = cp.Problem(objective, constraints)
+    prob.solve(
+        solver=cp.MOSEK, verbose=False
+    )  # You can try other solvers, e.g., 'CVXOPT' or 'MOSEK' or 'SCS'
+
+    if x.value is None:
+        raise ValueError("Optimization did not converge.")
+
+    # Solution: normalize beamforming vector
+    w = x.value / np.max(np.abs(x.value))
+
+    return w
+
+from scipy.constants import c as v_c
+
+def compute_bf_phases(
+    phi2, # pilot 2
+    phi1, # pilot 1
+    alpha=0,
+    scale=1e1,
+):
+
+    h_C = np.exp(1j*phi2)
+    H_DL = np.exp(1j * phi1)
+
+    # Ensure H_DL is a row vector
+    if H_DL.shape[0] != 1:
+        H_DL = H_DL.T
+
+    # Constants
+    _lambda = v_c / 920e6  # Wavelength
+
+    # Distance and channel
+    distance = 1
+    h_R = _lambda / (4 * np.pi * distance)
+    h_R = np.array([h_R])[:, np.newaxis]
+
+    # Channels
+    H_BD = h_R * h_C.T
+
+    # Dimensions
+    M = len(h_C)
+    N = len(h_R)
+    P_max = 1
+
+    # Beamforming
+    if alpha == 0:
+        w = cvx_solver(H_DL, h_C, M, scale, alpha, P_max)
+    else:
+        w = sdr_solver(H_DL, H_BD, M, scale, alpha, P_max)
+
+    # Extract phase
+    w_angle = np.angle(w)
+
+    # Compute constraint and objective values
+    const = (np.linalg.norm(H_DL @ w) / np.linalg.norm(H_BD @ w)) ** 2
+    obj = (np.linalg.norm(H_BD @ w)) ** 2
+
+    print(f"Constraint is {const:.9f}")
+    print(f"Objective is {obj:.9f}\n")
+
+    return w_angle
+
 
 with open(output_path, "w") as f:
     # Write experiment metadata to the YAML file
@@ -183,7 +319,8 @@ with open(output_path, "w") as f:
         # Clear for new round
         identities.clear()
         hostnames.clear()
-        csi_data.clear()
+        phi_P1s.clear()
+        phi_P2s.clear()
 
         messages_received = 0
         start_time = time.time()
@@ -201,7 +338,8 @@ with open(output_path, "w") as f:
 
                 identities.append(identity)
                 hostnames.append(hostname)
-                csi_data.append(phi_P1)
+                phi_P1s.append(phi_P1)
+                phi_P2s.append(phi_P2)
 
                 messages_received += 1
                 print(
@@ -220,12 +358,13 @@ with open(output_path, "w") as f:
         if messages_received == 0:
             continue
 
+        angles = compute_bf_phases(phi_P2s, phi_P1s)
+
         # Send individual replies to all identities
-        for identity, original_csi in zip(identities, csi_data):
+        for identity, bf_angle in zip(identities, angles):
             # delta_phase = np.angle(original_csi) - avg_phase
             # response = {"delta_phase": delta_phase, "avg_ampl": avg_ampl}
-            response_csi = - original_csi
-            reponse = {"phi_BF": response_csi}
+            reponse = {"phi_BF": bf_angle}
             router_socket.send_multipart([identity, json.dumps(reponse).encode()])
 
         f.flush()
