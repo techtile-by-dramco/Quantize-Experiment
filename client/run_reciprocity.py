@@ -801,7 +801,7 @@ def get_BF(phi_P1, phi_P2):
         response = json.loads(reply.decode())
         logger.info("[%s] Received: %s", HOSTNAME, response)
         # Reconstruct complex number
-        result = complex(response["real"], response["imag"])
+        result = response["phi_BF"]
         logger.debug("Received response: %s", result)
     else:
         logger.warning("[%s] No reply from server, timed out.", HOSTNAME)
