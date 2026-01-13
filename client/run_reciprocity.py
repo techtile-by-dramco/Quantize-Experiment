@@ -771,8 +771,6 @@ def measure_loopback(
 def get_BF(phi_P1, phi_P2):
     import json
 
-    logger.debug("Connecting to server %s.", ip)
-
     dealer_socket = context.socket(zmq.DEALER)
 
     # Give this DEALER a unique identity so the ROUTER can reply properly
