@@ -194,7 +194,7 @@ def cvx_solver(H_DL, h_C, M, scale, alpha, P_max):
     # Problem definition and solve
     prob = cp.Problem(objective, constraints)
     prob.solve(
-        solver=cp.MOSEK, verbose=False
+        solver=cp.SCS, verbose=False
     )  # You can try other solvers, e.g., 'CVXOPT' or 'MOSEK' or 'SCS'
 
     if x.value is None:
