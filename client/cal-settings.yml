@@ -40,3 +40,20 @@ TX_TIME: !!float 72000
 SERVER_IP: "192.108.2.57"  # TECHTILE JARNE SERVER
 # SERVER_IP: "192.108.10.38"  # Client 9 Gilles
 # IP address of the server to connect to.
+
+# =============================================================================
+#                           TIMING
+# =============================================================================
+START_PILOT_1: 10
+START_PILOT_2: 20
+START_LB: 30
+START_TX: 60
+
+
+# =============================================================================
+#                           ZMQ Server
+# =============================================================================
+SYNC_PORT:  "5557"       # Port used for synchronization messages.
+ALIVE_PORT: "5558"      # Port used for heartbeat/alive messages.
+DATA_PORT:  "5559"       # Port used for data transmission.
+PILOT_PORT:  "5560"     # Port used for PILOT transmission

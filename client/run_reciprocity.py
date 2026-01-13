@@ -53,6 +53,7 @@ HOSTNAME = socket.gethostname()[4:]
 file_open = False
 # SERVER_IP = None  # populated by settings.yml
 
+
 # =============================================================================
 #                           Custom Log Formatter
 # =============================================================================
@@ -230,8 +231,6 @@ def rx_ref(usrp, rx_streamer, quit_event, duration, result_queue, start_time=Non
         )
         # iq_samples = iq_data[:, int(RATE // 10) : num_rx]
         iq_samples = iq_data[:, int(RATE * 1) : num_rx]
-
-        np.save(file_name_state, iq_samples)
 
         phase_ch0, freq_slope_ch0_before, freq_slope_ch0_after = tools.get_phases_and_apply_bandpass(
             iq_samples[0, :]
@@ -769,6 +768,49 @@ def measure_loopback(
     # ------------------------------------------------------------
     quit_event.clear()
 
+def get_BF(phi_P1, phi_P2):
+    import json
+
+    logger.debug("Connecting to server %s.", ip)
+
+    dealer_socket = context.socket(zmq.DEALER)
+
+    # Give this DEALER a unique identity so the ROUTER can reply properly
+
+    dealer_socket.setsockopt_string(zmq.IDENTITY, HOSTNAME)
+
+    dealer_socket.connect(f"tcp://{SERVER_IP}:{PILOT_PORT}")
+
+    logger.debug("Sending CSI")
+
+    # Create a message dict with CSI (complex split into real and imag)
+    msg = {"host": HOSTNAME, "phi_P1": phi_P1, "phi_P2": phi_P1}
+
+    # Serialize to JSON and send
+    dealer_socket.send(json.dumps(msg).encode())
+    logger.debug("Message sent, waiting for response...")
+
+    # Wait for response
+    poller = zmq.Poller()
+    poller.register(dealer_socket, zmq.POLLIN)
+    socks = dict(poller.poll(30000))
+
+    result = None
+
+    if dealer_socket in socks and socks[dealer_socket] == zmq.POLLIN:
+        reply = dealer_socket.recv()
+        logger.debug("Raw reply: %r", reply)
+        response = json.loads(reply.decode())
+        logger.info("[%s] Received: %s", HOSTNAME, response)
+        # Reconstruct complex number
+        result = complex(response["real"], response["imag"])
+        logger.debug("Received response: %s", result)
+    else:
+        logger.warning("[%s] No reply from server, timed out.", HOSTNAME)
+
+    dealer_socket.close()
+
+    return result
 
 def tx_phase_coh(usrp, tx_streamer, quit_event, phase_corr, at_time, long_time=True):
     """
@@ -937,9 +979,6 @@ def main():
         # Event used to control thread termination
         quit_event = threading.Event()
 
-        cmd_time = CAPTURE_TIME + 2.0  # Duration for one measurement step
-        start_next_cmd = cmd_time  # Timestamp for the next scheduled command
-
         # Queue to collect measurement results and communicate between threads
         result_queue = queue.Queue()
 
@@ -947,55 +986,76 @@ def main():
         # STEP 1: Perform pilot measurement
         # -------------------------------------------------------------------------
 
-        file_name_state = file_name + "_pilot"
         measure_pilot(
             usrp,
             tx_streamer,
             rx_streamer,
             quit_event,
             result_queue,
-            at_time=start_next_cmd
+            at_time=START_PILOT_1
         )
 
         # Retrieve pilot phase result
-        phi_P = result_queue.get()
+        phi_RP1 = result_queue.get()
 
         # Print pilot phase
         logger.info(
-            "Phase pilot reference signal: %s (rad) / %s%s",
-            fmt(phi_P),
-            fmt(np.rad2deg(phi_P)),
+            "Phase pilot 1 reference signal: %s (rad) / %s%s",
+            fmt(phi_RP1),
+            fmt(np.rad2deg(phi_RP1)),
             DEG,
         )
 
-        start_next_cmd += (
-            cmd_time + 4.0 + CAPTURE_TIME
-        )  # Schedule next command after delay
-
         # -------------------------------------------------------------------------
-        # STEP 2: Perform internal loopback measurement with reference signal
+        # STEP 1: Perform pilot measurement
         # -------------------------------------------------------------------------
 
-        file_name_state = file_name + "_loopback"
+        measure_pilot(
+            usrp,
+            tx_streamer,
+            rx_streamer,
+            quit_event,
+            result_queue,
+            at_time=START_PILOT_2,
+        )
+
+        # Retrieve pilot phase result
+        phi_RP2 = result_queue.get()
+
+        # Print pilot phase
+        logger.info(
+            "Phase pilot 2 reference signal: %s (rad) / %s%s",
+            fmt(phi_RP2),
+            fmt(np.rad2deg(phi_RP2)),
+            DEG,
+        )
+
+        # -------------------------------------------------------------------------
+        # STEP 3: Perform internal loopback measurement with reference signal
+        # -------------------------------------------------------------------------
+
         measure_loopback(
             usrp,
             tx_streamer,
             rx_streamer,
             quit_event,
             result_queue,
-            at_time=start_next_cmd,
+            at_time=START_LB,
         )
 
         # Retrieve loopback phase result
-        phi_LB = result_queue.get()
+        phi_RL = result_queue.get()
 
         # Print loopback phase
-        logger.info("Phase LB reference signal: %s (rad) / %s%s", fmt(phi_LB), fmt(np.rad2deg(phi_LB)), DEG)
-
-        start_next_cmd += cmd_time + 2.0 + CAPTURE_TIME  # Schedule next command
+        logger.info(
+            "Phase LB reference signal: %s (rad) / %s%s",
+            fmt(phi_RL),
+            fmt(np.rad2deg(phi_RL)),
+            DEG,
+        )
 
         # -------------------------------------------------------------------------
-        # STEP 3: Load cable phase correction from YAML configuration (if available)
+        # STEP 4: Load cable phase correction from YAML configuration (if available)
         # -------------------------------------------------------------------------
         phi_cable = 0
         with open(
@@ -1011,26 +1071,7 @@ def main():
             except yaml.YAMLError as exc:
                 print(exc)
 
-        # -------------------------------------------------------------------------
-        # STEP 4: Add additional phase to ensure right measurement with the scope
-        # -------------------------------------------------------------------------
-        # phi_offset = 0
-        # with open(
-        #     os.path.join(os.path.dirname(__file__), args.tx_phase_file), "r"
-        # ) as phases_yaml:
-        #     try:
-        #         phases_dict = yaml.safe_load(phases_yaml)
-        #         if HOSTNAME in phases_dict.keys():
-        #             phi_BF = phases_dict[HOSTNAME]
-        #             logger.debug(f"Applying BF phase: {phi_BF}")
-        #         else:
-        #             logger.error("Phase offset not found in tx-phases-benchmark.yml")
-        #     except yaml.YAMLError as exc:
-        #         print(exc)
-
-        # -------------------------------------------------------------------------
-        # STEP 5: Benchmark without phase-aligned beamforming
-        # -------------------------------------------------------------------------
+        phi_BF = get_BF(-phi_RP1 + np.deg2rad(phi_cable), -phi_RP2 + np.deg2rad(phi_cable))
 
         alive_socket = context.socket(zmq.REQ)
         alive_socket.connect(f"tcp://{SERVER_IP}:{5558}")
@@ -1038,14 +1079,13 @@ def main():
         alive_socket.send_string(f"{HOSTNAME} TX")
         alive_socket.close()
 
-
         # no negative sign for LB and P as here in the code REF-P and REF-LB is done. In the paper it is vice versa. Hence, phi_LB = - phi_L-R in the paper
         # same reason here - phi_cable
-        phase_corr = phi_LB - np.deg2rad(phi_cable) - np.deg2rad(phi_cable) + phi_P
+        tx_phase = phi_RL - np.deg2rad(phi_cable) + phi_BF
         logger.info(
             "Phase correction: %s (rad) / %s%s",
-            fmt(phase_corr),
-            fmt(np.rad2deg(phase_corr)),
+            fmt(tx_phase),
+            fmt(np.rad2deg(tx_phase)),
             DEG,
         )
 
@@ -1054,8 +1094,8 @@ def main():
             tx_streamer,
             quit_event,
             # phase_corr=phi_LB + phi_P + np.deg2rad(phi_cable),
-            phase_corr=phase_corr,
-            at_time=start_next_cmd,
+            phase_corr=tx_phase,
+            at_time=START_TX,
             long_time=True,  # Set long_time True if you want to transmit longer than 10 seconds
         )
 

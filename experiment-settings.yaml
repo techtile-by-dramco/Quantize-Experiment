@@ -45,9 +45,7 @@ test_connectivity: False             # set True if you want to test tile connect
 halt_on_connectivity_failure: False  # set False if you want to continue with only the active tiles
 
 experiment_config:
-  target_location: 3.27905810546875, 1.7493585205078126, 0.2528133087158203
-  # target moved to center of LoS: max at: 3.037429, 1.751323 [0.24162910546]
-  # new LoS target becomes: 3.52068721094 1.7493585205078126, 0.2528133087158203
+  alpha: 0
 
 
 scope:

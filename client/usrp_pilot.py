@@ -46,6 +46,7 @@ MEAS_TYPE_PHASE_DIFF = "PDIFF"
 # Global variables
 meas_id = 0
 tx_phase = None
+pilot_num = 1
 
 results = []
 
@@ -362,7 +363,7 @@ def rx_ref(
 
 def wait_till_go_from_server(ip, _connect=True):
 
-    global meas_id, file_open, data_file, file_name
+    global meas_id, file_open, data_file, file_name, pilot_num
     # Connect to the publisher's address
     logger.debug("Connecting to server %s.", ip)
     sync_socket = context.socket(zmq.SUB)
@@ -375,7 +376,7 @@ def wait_till_go_from_server(ip, _connect=True):
     sync_socket.subscribe("")
 
     logger.debug("Sending ALIVE")
-    alive_socket.send_string("PILOT")
+    alive_socket.send_string(f"PILOT {pilot_num}")
     # Receives a string format message
     logger.debug("Waiting on SYNC from server %s.", ip)
 
@@ -967,6 +968,7 @@ def tx_pilot(usrp, tx_streamer, quit_event, at_time):
     start_time = uhd.types.TimeSpec(at_time)
 
     logger.debug(starting_in(usrp, at_time))
+    logger.debug("TX pilot scheduled start time: %.6fs", start_time.get_real_secs())
 
     logger.debug(
         f"TX CH0:{np.rad2deg(phases[0]):.2f} and CH1:{np.rad2deg(phases[1]):.2f}"
@@ -1025,7 +1027,7 @@ def get_current_time(usrp):
 
 
 def parse_arguments():
-    global tx_phase, SERVER_IP
+    global tx_phase, SERVER_IP, pilot_num
 
     # Create the parser
     parser = argparse.ArgumentParser(description="Transmit with phase difference.")
@@ -1037,12 +1039,19 @@ def parse_arguments():
     parser.add_argument(
         "--ip", type=str, help="ip address of the server", required=False
     )
+    parser.add_argument(
+        "--pilot",
+        type=int,
+        default=1,
+        help="Pilot number identifier (default: 1)",
+    )
 
     # Parse the arguments
     args = parser.parse_args()
 
     # Set the global variable tx_phase to the value of --phase
     tx_phase = args.phase
+    pilot_num = args.pilot
 
     if args.ip is not None:
         if args.ip:  # and not empty
@@ -1072,12 +1081,12 @@ def main():
 
         tx_thr = tx_meta_thr = None
 
-        margin = 1.0  # start 1.0 sec earlier than receiver
-
-        cmd_time = CAPTURE_TIME + margin
+        start_time = START_PILOT_1
+        if pilot_num == 2:
+            start_time = START_PILOT_2
 
         start_next_cmd = cmd_time
-        _ = tx_pilot(usrp, tx_streamer, quit_event, at_time=start_next_cmd)
+        _ = tx_pilot(usrp, tx_streamer, quit_event, at_time=start_time)
 
         print("My job is done")
 
