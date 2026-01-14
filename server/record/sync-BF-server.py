@@ -209,8 +209,8 @@ from scipy.constants import c as v_c
 
 
 def compute_bf_phases(
-    h_C,  # pilot 2
-    H_DL,  # pilot 1
+    H_DL,  # pilot 2
+    h_C,  # pilot 1
     alpha=0,
     scale=1e1,
 ):
