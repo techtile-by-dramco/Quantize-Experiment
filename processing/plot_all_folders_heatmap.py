@@ -469,6 +469,14 @@ def plot_heatmap(
                 linewidth=2,
             )
         )
+        ax_dbm.plot(
+            x0 + w / 2.0,
+            y0 + h / 2.0,
+            marker="x",
+            color="green",
+            markersize=8,
+            markeredgewidth=2,
+        )
     fig_dbm.tight_layout()
     plt.savefig(os.path.join(folder, png_name.replace(".png", "_dBm.png")))
     if show:
@@ -592,8 +600,6 @@ def plot_diff_heatmap(
     title_override=None,
 ):
     """Plot the difference vs baseline in dB (folder - baseline) on aligned grid."""
-    vmax_db = 10 * np.log10(42) # we expect a sqrt(42) ~16x power gain at most
-    vmin_db = -vmax_db
     png_out = png_name or f"heatmap_vs_{baseline_name}_dB.png"
     bitmap_out = bitmap_name or f"heatmap_vs_{baseline_name}_dB_bitmap.png"
 
@@ -602,8 +608,6 @@ def plot_diff_heatmap(
             diff_map.T,
             origin="lower",
             cmap=CMAP,
-            vmin=vmin_db,
-            vmax=vmax_db,
             extent=[x_edges[0], x_edges[-1], y_edges[0], y_edges[-1]],
         )
         ax.set_aspect("equal", adjustable="box")
@@ -859,8 +863,8 @@ def main():
     if args.grid_res_lambda:
         grid_res = float(args.grid_res_lambda) * WAVELENGTH
 
-    target_vals = load_target_from_settings()
-    target_rect = target_rect_from_xyz(target_vals)
+    target_vals = None
+    target_rect = None
 
     # Sort subfolders by modification time (newest first) to view recent runs first
     folder_entries = []
@@ -964,11 +968,8 @@ def main():
         xs = np.array([p.x for p in positions], dtype=float)
         ys = np.array([p.y for p in positions], dtype=float)
 
-        if len(xs) and len(ys) and os.path.basename(folder_path).startswith("RECI"):
-            first_target = [float(xs[0]), float(ys[0])]
-            if target_vals and len(target_vals) > 2:
-                first_target.append(target_vals[2])
-            target_vals = first_target
+        if len(xs) and len(ys):
+            target_vals = [float(xs[0]), float(ys[0])]
             target_rect = target_rect_from_xyz(target_vals)
 
         heatmap, counts, x_edges, y_edges, xi, yi = compute_heatmap(
@@ -1066,8 +1067,6 @@ def main():
                     suffix=suffix,
                     title=f"{os.path.basename(folder_path)} - {baseline_override_name} [dB]{' | ' + gain_title if gain_title else ''}",
                     target_rect=target_rect,
-                    vmin=-10 * np.log10(42)-6,
-                    vmax=10 * np.log10(42)+6,
                 )
 
         recent_cells = None

@@ -22,7 +22,7 @@ import numpy as np
 
 SAVE_EVERY = 60.0  # seconds
 FOLDER = (
-    "AHMET-Phase2-RF-0"  # subfolder inside data/where to save measurement data
+    "AHMETBF-RF-0"  # subfolder inside data/where to save measurement data
 )
 TIMESTAMP = round(time())
 DEFAULT_DURATION = None  # seconds, override via CLI
