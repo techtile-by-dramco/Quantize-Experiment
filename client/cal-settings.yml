@@ -59,4 +59,4 @@ DATA_PORT:  "5559"       # Port used for data transmission.
 PILOT_PORT:  "5560"     # Port used for PILOT transmission
 
 
-BEAMFORMER: MRT # or ZAF
+BEAMFORMER: AZF # or AZF or MRT

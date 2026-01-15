@@ -1,0 +1,21 @@
+folder: MRT-BD-1
+aggregation: mean
+grid_res_m: 0.013043478260869566
+target_location: 3.866079, 1.754245, n/a
+max_power_uW: 14.748503
+max_cell_center_m: 2.886834, 1.261065
+max_cell_index: 17, 10
+max_cell_count: 5577
+first_cell_index: 92, 48
+first_position: 3.866079, 1.754245
+total_samples: 95478
+sum_counts: 95478
+cells_total: 9888
+cells_nonzero: 9259
+min_cell_count: 1
+max_cell_count_all: 5577
+target_cell_index: 92, 48
+target_cell_center_m: 3.865095, 1.756717
+target_power_uW: 1.197348
+target_cell_count: 700
+target_power_dBm: -29.22
