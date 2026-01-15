@@ -24,9 +24,9 @@ class scope_data(object):
 
 
 WAVELENGTH = 3e8 / 920e6  # meters
-
 GRID_RES = 0.04 * WAVELENGTH  # meters (default; overridden by --grid-res-lambda)
 SMALL_POWER_UW = 1e-8  # threshold for reporting tiny measurements (micro-watts)
+DEFAULT_BASELINE_FOLDER = "RANDOM-1"
 
 
 DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data"))
@@ -77,6 +77,35 @@ def pw_to_dbm(pw_values):
     dbm = np.full_like(pw, np.nan, dtype=float)
     valid = pw > 0
     dbm[valid] = 10 * np.log10(pw[valid] * 1e-12 / 1e-3)
+    return dbm
+
+
+def load_folder_config(folder_path):
+    """Load optional per-folder overrides from config.yml (returns a dict or {})."""
+    config_path = os.path.join(folder_path, "config.yml")
+    if not os.path.isfile(config_path):
+        return {}
+    try:
+        with open(config_path, "r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+        if not isinstance(data, dict):
+            print(f"Warning: config.yml in {folder_path} is not a mapping; ignoring.")
+            return {}
+        return data
+    except Exception as exc:
+        print(f"Warning: failed to read config.yml in {folder_path}: {exc}")
+        return {}
+
+
+def heatmap_to_dbm(heatmap_uw, floor_watts=1e-15):
+    """
+    Convert heatmap values (uW) to dBm with a small floor to avoid -inf.
+    NaNs in the input stay NaN in the output.
+    """
+    power_w = heatmap_uw * 1e-6
+    power_w = np.where(np.isfinite(power_w) & (power_w > 0), power_w, floor_watts)
+    dbm = 10 * np.log10(power_w / 1e-3)
+    dbm[~np.isfinite(heatmap_uw)] = np.nan
     return dbm
 
 
@@ -475,7 +504,7 @@ def plot_heatmap(
         plt.close(fig_counts)
 
     # dBm plot (uses corresponding vmin/vmax if provided)
-    heatmap_dbm = 10 * np.log10(np.clip(heatmap * 1e-6, 1e-15, None) / 1e-3)  # uW->W then to dBm
+    heatmap_dbm = heatmap_to_dbm(heatmap)
 
     dbm_kwargs = dict(
         origin="lower",
@@ -518,7 +547,24 @@ def plot_heatmap(
             markeredgewidth=2,
         )
     fig_dbm.tight_layout()
-    plt.savefig(os.path.join(folder, png_name.replace(".png", "_dBm.png")))
+    dbm_png_name = png_name.replace(".png", "_dBm.png")
+    dbm_bitmap_name = bitmap_name.replace(".png", "_dBm_bitmap.png")
+    plt.savefig(os.path.join(folder, dbm_png_name))
+    if save_bitmap:
+        fig_dbm_bitmap, ax_dbm_bitmap = plt.subplots()
+        ax_dbm_bitmap.imshow(
+            heatmap_dbm.T,
+            **dbm_kwargs,
+        )
+        ax_dbm_bitmap.set_aspect("equal", adjustable="box")
+        ax_dbm_bitmap.axis("off")
+        fig_dbm_bitmap.tight_layout(pad=0)
+        plt.savefig(
+            os.path.join(folder, dbm_bitmap_name),
+            bbox_inches="tight",
+            pad_inches=0,
+        )
+        plt.close(fig_dbm_bitmap)
     if show:
         plt.show()
     else:
@@ -784,8 +830,8 @@ def export_heatmap_tex(folder, x_edges, y_edges, heatmap, suffix="", title="", t
         cx, cy = x0 + w / 2.0, y0 + h / 2.0
         lines.extend(
             [
-                "    % Target circle (radius = wavelength/2)",
-                f"    \\draw[red,dashed,thick] ({cx:.6g},{cy:.6g}) circle [radius={WAVELENGTH/2:.6g}];",
+                "    % Target circle (radius = wavelength/8)",
+                f"    \\draw[cyan,dashed,thick] ({cx:.6g},{cy:.6g}) circle [radius={WAVELENGTH/8:.6g}];",
             ]
         )
 
@@ -842,8 +888,8 @@ def parse_args():
     )
     parser.add_argument(
         "--baseline-folder",
-        default="RANDOM-1",
-        help="Folder name to use as baseline for delta heatmap (default: RANDOM). Set empty to disable.",
+        default=None,
+        help="Folder name to use as baseline for delta heatmap (default: RANDOM-1 when not set in CLI/config). Set empty to disable.",
     )
     parser.add_argument(
         "--export-csv",
@@ -970,6 +1016,16 @@ def main():
     if not os.path.isdir(DATA_DIR):
         raise FileNotFoundError(f"DATA_DIR not found: {DATA_DIR}")
 
+    cli_flags = {
+        "baseline_folder": args.baseline_folder is not None,
+        "vmin": args.vmin is not None,
+        "vmax": args.vmax is not None,
+        "cmin": args.cmin is not None,
+        "cmax": args.cmax is not None,
+        "vdmin": args.vdmin is not None,
+        "vdmax": args.vdmax is not None,
+    }
+
     grid_res = GRID_RES
     if args.grid_res_lambda:
         grid_res = float(args.grid_res_lambda) * WAVELENGTH
@@ -990,7 +1046,8 @@ def main():
     # Precompute default baseline heatmap if requested
     baseline_heatmap = baseline_x_edges = baseline_y_edges = None
     baseline_agg = "mean"
-    baseline_folder_name = args.baseline_folder.strip() if args.baseline_folder else ""
+    baseline_folder_name = args.baseline_folder if cli_flags["baseline_folder"] else DEFAULT_BASELINE_FOLDER
+    baseline_folder_name = baseline_folder_name.strip() if isinstance(baseline_folder_name, str) else ""
 
     def _build_baseline(baseline_name: str):
         if not baseline_name:
@@ -1012,7 +1069,7 @@ def main():
             base_xs = np.array([p.x for p in base_positions], dtype=float)
             base_ys = np.array([p.y for p in base_positions], dtype=float)
             base_heatmap, _, base_x_edges, base_y_edges, _, _ = compute_heatmap(
-                base_xs, base_ys, base_vs, GRID_RES, agg=baseline_agg
+                base_xs, base_ys, base_vs, grid_res, agg=baseline_agg
             )
             return base_heatmap, base_x_edges, base_y_edges
         except Exception as exc:
@@ -1037,17 +1094,43 @@ def main():
             print(e)
             continue
 
-        baseline_override_name = baseline_folder_name
-        baseline_override_path = os.path.join(folder_path, "baseline.txt")
-        if os.path.isfile(baseline_override_path):
-            try:
-                with open(baseline_override_path, "r", encoding="utf-8") as fh:
-                    baseline_override_name = fh.read().strip()
-            except Exception as exc:
-                print(f"Failed to read baseline override in {baseline_override_path}: {exc}")
-                baseline_override_name = baseline_folder_name
-        if not baseline_override_name:
-            baseline_override_name = ""
+        baseline_txt_path = os.path.join(folder_path, "baseline.txt")
+        if os.path.isfile(baseline_txt_path):
+            print(f"Warning: baseline.txt is deprecated and ignored in {folder_path}; use config.yml instead.")
+
+        folder_config = load_folder_config(folder_path)
+
+        def apply_config(key, current_val, cli_set):
+            if key not in folder_config or folder_config[key] is None:
+                return current_val
+            if cli_set:
+                print(
+                    f"Warning: {key} set in CLI overrides config.yml for {folder_name}; using CLI value ({current_val})."
+                )
+                return current_val
+            return folder_config[key]
+
+        folder_vmin = apply_config("vmin", args.vmin, cli_flags["vmin"])
+        folder_vmax = apply_config("vmax", args.vmax, cli_flags["vmax"])
+        folder_cmin = apply_config("cmin", args.cmin, cli_flags["cmin"])
+        folder_cmax = apply_config("cmax", args.cmax, cli_flags["cmax"])
+        folder_vdmin = apply_config("vdmin", args.vdmin, cli_flags["vdmin"])
+        folder_vdmax = apply_config("vdmax", args.vdmax, cli_flags["vdmax"])
+        baseline_override_name = apply_config("baseline-folder", baseline_folder_name, cli_flags["baseline_folder"])
+        baseline_override_name = baseline_override_name.strip() if isinstance(baseline_override_name, str) else ""
+
+        if folder_vmin is not None and folder_vmax is not None and folder_vmin > folder_vmax:
+            raise ValueError(
+                f"config/CLI mismatch for {folder_name}: vmin ({folder_vmin}) cannot be greater than vmax ({folder_vmax})"
+            )
+        if folder_cmin is not None and folder_cmax is not None and folder_cmin > folder_cmax:
+            raise ValueError(
+                f"config/CLI mismatch for {folder_name}: cmin ({folder_cmin}) cannot be greater than cmax ({folder_cmax})"
+            )
+        if folder_vdmin is not None and folder_vdmax is not None and folder_vdmin > folder_vdmax:
+            raise ValueError(
+                f"config/CLI mismatch for {folder_name}: vdmin ({folder_vdmin}) cannot be greater than vdmax ({folder_vdmax})"
+            )
 
         start_count = len(values)
         drop_ts = drop_dups = drop_small = 0
@@ -1089,6 +1172,21 @@ def main():
         if args.fill_empty:
             heatmap = fill_empty_cells_nearest(heatmap)
 
+        heatmap_dbm = heatmap_to_dbm(heatmap)
+        if (
+            args.vmin is not None
+            or args.vmax is not None
+            or "vmin" in folder_config
+            or "vmax" in folder_config
+        ):
+            finite_dbm = heatmap_dbm[np.isfinite(heatmap_dbm)]
+            if finite_dbm.size:
+                dmin, dmax = float(finite_dbm.min()), float(finite_dbm.max())
+                if folder_vmin is not None and dmin < folder_vmin:
+                    print(f"Warning: dBm map min {dmin:.2f} is below vmin {folder_vmin} for {folder_name} (clipping).")
+                if folder_vmax is not None and dmax > folder_vmax:
+                    print(f"Warning: dBm map max {dmax:.2f} is above vmax {folder_vmax} for {folder_name} (clipping).")
+
         if args.export_csv:
             export_heatmap_csv(folder_path, heatmap, x_edges, y_edges)
             export_heatmap_tex(
@@ -1098,6 +1196,18 @@ def main():
                 heatmap,
                 title=f"{os.path.basename(folder_path)} | {args.agg} power [uW]",
                 target_rect=target_rect,
+            )
+            export_heatmap_csv(folder_path, heatmap_dbm, x_edges, y_edges, suffix="dBm")
+            export_heatmap_tex(
+                folder_path,
+                x_edges,
+                y_edges,
+                heatmap_dbm,
+                suffix="dBm",
+                title=f"{os.path.basename(folder_path)} | {args.agg} power [dBm]",
+                target_rect=target_rect,
+                vmin=folder_vmin,
+                vmax=folder_vmax,
             )
 
         # If baseline available, compute aligned heatmap and plot delta
@@ -1131,6 +1241,14 @@ def main():
                 aligned_heatmap = fill_empty_cells_nearest(aligned_heatmap)
                 curr_baseline_heatmap = fill_empty_cells_nearest(curr_baseline_heatmap)
             diff_map = heatmap_delta_db(aligned_heatmap, curr_baseline_heatmap)
+            if args.vdmin is not None or args.vdmax is not None or "vdmin" in folder_config or "vdmax" in folder_config:
+                finite_diff = diff_map[np.isfinite(diff_map)]
+                if finite_diff.size:
+                    dmin, dmax = float(finite_diff.min()), float(finite_diff.max())
+                    if folder_vdmin is not None and dmin < folder_vdmin:
+                        print(f"Warning: diff map min {dmin:.2f} dB is below vdmin {folder_vdmin} for {folder_name} (clipping).")
+                    if folder_vdmax is not None and dmax > folder_vdmax:
+                        print(f"Warning: diff map max {dmax:.2f} dB is above vdmax {folder_vdmax} for {folder_name} (clipping).")
             global_gain, target_gain = gain_stats(
                 aligned_heatmap,
                 curr_baseline_heatmap,
@@ -1158,8 +1276,8 @@ def main():
                 diff_map,
                 curr_baseline_x_edges,
                 curr_baseline_y_edges,
-                vdmin=args.vdmin,
-                vdmax=args.vdmax,
+                vdmin=folder_vdmin,
+                vdmax=folder_vdmax,
                 target_rect=target_rect,
                 show=not args.save_only,
                 save_bitmap=args.export_csv,
@@ -1222,10 +1340,10 @@ def main():
             recent_cells,
             target_rect,
             agg=args.agg,
-            cmin=args.cmin,
-            cmax=args.cmax,
-            vmin=args.vmin,
-            vmax=args.vmax,
+            cmin=folder_cmin,
+            cmax=folder_cmax,
+            vmin=folder_vmin,
+            vmax=folder_vmax,
             show=not args.save_only,
             save_bitmap=args.export_csv,
             png_name="heatmap.png",

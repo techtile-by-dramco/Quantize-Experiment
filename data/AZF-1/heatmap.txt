@@ -8,23 +8,23 @@ bd_power_mean_dBm: -15.85
 max_power_uW: 10.038842
 max_cell_center_m: 3.221389, 2.107516
 max_cell_index: 38, 75
-max_cell_count: 177
+max_cell_count: 193
 first_cell_index: 10, 7
 first_position: 2.860000, 1.226423
 baseline_folder_used: MRT-BD-1
-total_samples: 56427
-sum_counts: 56427
+total_samples: 65588
+sum_counts: 65588
 cells_total: 9216
 cells_nonzero: 8811
 min_cell_count: 1
-max_cell_count_all: 177
+max_cell_count_all: 193
 target_cell_index: 10, 7
 target_cell_center_m: 2.856172, 1.220560
-target_power_uW: 0.242414
-target_cell_count: 162
-target_power_dBm: -36.15
+target_power_uW: 0.252912
+target_cell_count: 193
+target_power_dBm: -35.97
 baseline_folder: MRT-BD-1
 baseline_target_power_uW: 13.382163
 baseline_target_power_dBm: -18.73
-target_gain_linear: 0.018115
-target_gain_db: -17.42
+target_gain_linear: 0.018899
+target_gain_db: -17.24

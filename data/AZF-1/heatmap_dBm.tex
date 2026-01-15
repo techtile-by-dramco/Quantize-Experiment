@@ -1,0 +1,21 @@
+% PGFPlots includegraphics example for figures/AZF-1/heatmap_dBm_bitmap.png
+\begin{tikzpicture}
+  \begin{axis}[
+    axis equal image,
+    xmin=2.71922, xmax=3.97139,
+    ymin=1.12273, ymax=2.37491,
+    axis lines=box,
+    xlabel={x [m]},
+    ylabel={y [m]},
+    colorbar,
+    colormap name=inferno,
+    point meta min=-45,
+    point meta max=-20,
+    enlargelimits=false,
+    title={AZF-1 | mean power [dBm]}
+  ]
+    \addplot graphics [includegraphics cmd=\pgfimage, xmin=2.71922, xmax=3.97139, ymin=1.12273, ymax=2.37491] {figures/AZF-1/heatmap_dBm_bitmap.png};
+    % Target circle (radius = wavelength/8)
+    \draw[cyan,dashed,thick] (2.86,1.22642) circle [radius=0.0407609];
+  \end{axis}
+\end{tikzpicture}

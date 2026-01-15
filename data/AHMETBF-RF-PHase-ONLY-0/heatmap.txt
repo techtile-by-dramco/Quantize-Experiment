@@ -8,7 +8,6 @@ max_cell_index: 51, 91
 max_cell_count: 988
 first_cell_index: 86, 49
 first_position: 3.750727, 1.760441
-baseline_folder_used: AHMET-Phase2-RF-0
 total_samples: 198522
 sum_counts: 198522
 cells_total: 9603
@@ -20,8 +19,3 @@ target_cell_center_m: 3.747138, 1.762587
 target_power_uW: 0.874480
 target_cell_count: 988
 target_power_dBm: -30.58
-baseline_folder: AHMET-Phase2-RF-0
-baseline_target_power_uW: 8.687566
-baseline_target_power_dBm: -20.61
-target_gain_linear: 0.100659
-target_gain_db: -9.97

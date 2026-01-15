@@ -1,0 +1,21 @@
+% PGFPlots includegraphics example for figures/AHMET-Phase2-RF-0/heatmap_dBm_bitmap.png
+\begin{tikzpicture}
+  \begin{axis}[
+    axis equal image,
+    xmin=2.66674, xmax=3.95805,
+    ymin=1.12684, ymax=2.37901,
+    axis lines=box,
+    xlabel={x [m]},
+    ylabel={y [m]},
+    colorbar,
+    colormap name=inferno,
+    point meta min=-70.8875,
+    point meta max=-19.4756,
+    enlargelimits=false,
+    title={AHMET-Phase2-RF-0 | mean power [dBm]}
+  ]
+    \addplot graphics [includegraphics cmd=\pgfimage, xmin=2.66674, xmax=3.95805, ymin=1.12684, ymax=2.37901] {figures/AHMET-Phase2-RF-0/heatmap_dBm_bitmap.png};
+    % Target circle (radius = wavelength/8)
+    \draw[cyan,dashed,thick] (3.29335,1.75943) circle [radius=0.0407609];
+  \end{axis}
+\end{tikzpicture}
