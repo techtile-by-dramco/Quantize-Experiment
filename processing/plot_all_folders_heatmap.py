@@ -71,10 +71,20 @@ def target_rect_from_xyz(target_xyz, rect_size=0.2 * WAVELENGTH):
     return (tx - half, ty - half, rect_size, rect_size)
 
 
+def pw_to_dbm(pw_values):
+    """Convert power in pW to dBm (returns NaN for non-positive values)."""
+    pw = np.asarray(pw_values, dtype=float)
+    dbm = np.full_like(pw, np.nan, dtype=float)
+    valid = pw > 0
+    dbm[valid] = 10 * np.log10(pw[valid] * 1e-12 / 1e-3)
+    return dbm
+
+
 def load_folder(folder_path):
-    """Load and concatenate all *_positions.npy and *_values.npy pairs in a folder."""
+    """Load and concatenate all *_positions.npy, *_values.npy, and optional *_bd_power.npy in a folder."""
     positions_parts = []
     values_parts = []
+    bd_power_parts = []
 
     for name in sorted(os.listdir(folder_path)):
         if not name.endswith("_positions.npy"):
@@ -82,6 +92,7 @@ def load_folder(folder_path):
         base = name[: -len("_positions.npy")]
         pos_path = os.path.join(folder_path, name)
         val_path = os.path.join(folder_path, f"{base}_values.npy")
+        bd_path = os.path.join(folder_path, f"{base}_bd_power.npy")
         if not os.path.exists(val_path):
             print(f"Skipping {base}: missing values file")
             continue
@@ -97,14 +108,25 @@ def load_folder(folder_path):
             val_arr = val_arr[:min_len]
         positions_parts.append(pos_arr)
         values_parts.append(val_arr)
+        if os.path.exists(bd_path):
+            bd_arr = np.load(bd_path, allow_pickle=True)
+            if len(bd_arr) != len(pos_arr):
+                min_len = min(len(bd_arr), len(pos_arr))
+                print(
+                    f"\033[91mWarning: {base} bd_power ({len(bd_arr)}) != positions ({len(pos_arr)}); "
+                    f"truncating bd_power to {min_len}\033[0m"
+                )
+                bd_arr = bd_arr[:min_len]
+            bd_power_parts.append(bd_arr)
 
     if not positions_parts:
         raise ValueError(f"No position/value pairs found in {folder_path}")
 
     positions = np.concatenate(positions_parts)
     values = np.concatenate(values_parts)
+    bd_power = np.concatenate(bd_power_parts) if bd_power_parts else None
     print(f"{os.path.basename(folder_path)}: merged {len(positions_parts)} pairs, {len(positions)} samples")
-    return positions, values
+    return positions, values, bd_power
 
 
 def filter_small_values(folder_path, positions, values, vs, threshold=SMALL_POWER_UW):
@@ -518,6 +540,7 @@ def write_folder_log(
     y_edges,
     target_xyz,
     agg,
+    bd_power_pw=None,
     first_cell=None,
     first_pos=None,
     baseline_heatmap=None,
@@ -555,6 +578,20 @@ def write_folder_log(
             fh.write(f"target_location: {target_xyz[0]:.6f}, {target_xyz[1]:.6f}, {z_val}\n")
         else:
             fh.write("target_location: n/a\n")
+        if bd_power_pw is not None:
+            bd_vals = np.asarray(bd_power_pw, dtype=float)
+            bd_valid = bd_vals[np.isfinite(bd_vals) & (bd_vals > 0)]
+            if bd_valid.size:
+                bd_min_dbm = float(pw_to_dbm(bd_valid.min()))
+                bd_max_dbm = float(pw_to_dbm(bd_valid.max()))
+                bd_mean_dbm = float(pw_to_dbm(bd_valid.mean()))
+                fh.write(f"bd_power_min_dBm: {bd_min_dbm:.2f}\n")
+                fh.write(f"bd_power_max_dBm: {bd_max_dbm:.2f}\n")
+                fh.write(f"bd_power_mean_dBm: {bd_mean_dbm:.2f}\n")
+            else:
+                fh.write("bd_power_min_dBm: n/a\n")
+                fh.write("bd_power_max_dBm: n/a\n")
+                fh.write("bd_power_mean_dBm: n/a\n")
         fh.write(f"max_power_uW: {max_val:.6f}\n")
         fh.write(f"max_cell_center_m: {max_x:.6f}, {max_y:.6f}\n")
         if i_x is not None and i_y is not None:
@@ -963,7 +1000,7 @@ def main():
             print(f"Baseline folder not found: {baseline_path}")
             return None, None, None
         try:
-            base_positions, base_values = load_folder(baseline_path)
+            base_positions, base_values, _ = load_folder(baseline_path)
             if args.drop_consecutive_equal:
                 base_positions, base_values, _ = drop_consecutive_equal_values(
                     base_positions, base_values
@@ -995,7 +1032,7 @@ def main():
     for _, folder_name in folder_entries:
         folder_path = os.path.join(DATA_DIR, folder_name)
         try:
-            positions, values = load_folder(folder_path)
+            positions, values, bd_power = load_folder(folder_path)
         except ValueError as e:
             print(e)
             continue
@@ -1168,6 +1205,7 @@ def main():
             y_edges,
             target_vals,
             args.agg,
+            bd_power_pw=bd_power,
             first_cell=first_cell,
             first_pos=first_pos,
             baseline_heatmap=curr_baseline_heatmap,

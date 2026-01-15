@@ -1,0 +1,30 @@
+folder: AZF-1
+aggregation: mean
+grid_res_m: 0.013043478260869566
+target_location: 2.860000, 1.226423, n/a
+bd_power_min_dBm: -16.14
+bd_power_max_dBm: -15.57
+bd_power_mean_dBm: -15.86
+max_power_uW: 10.038842
+max_cell_center_m: 3.221389, 2.107516
+max_cell_index: 38, 75
+max_cell_count: 177
+first_cell_index: 10, 7
+first_position: 2.860000, 1.226423
+baseline_folder_used: MRT-BD-1
+total_samples: 52204
+sum_counts: 52204
+cells_total: 9216
+cells_nonzero: 8811
+min_cell_count: 1
+max_cell_count_all: 177
+target_cell_index: 10, 7
+target_cell_center_m: 2.856172, 1.220560
+target_power_uW: 0.237238
+target_cell_count: 150
+target_power_dBm: -36.25
+baseline_folder: MRT-BD-1
+baseline_target_power_uW: 13.382163
+baseline_target_power_dBm: -18.73
+target_gain_linear: 0.017728
+target_gain_db: -17.51

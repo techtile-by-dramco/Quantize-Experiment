@@ -2,26 +2,26 @@ folder: AHMETBF-RF-PHase-ONLY-0
 aggregation: mean
 grid_res_m: 0.013043478260869566
 target_location: 3.750727, 1.760441, n/a
-max_power_uW: 11.756312
-max_cell_center_m: 3.284095, 2.303891
-max_cell_index: 25, 45
-max_cell_count: 1113
-first_cell_index: 43, 24
+max_power_uW: 11.998253
+max_cell_center_m: 3.290616, 2.310413
+max_cell_index: 51, 91
+max_cell_count: 988
+first_cell_index: 86, 49
 first_position: 3.750727, 1.760441
 baseline_folder_used: AHMET-Phase2-RF-0
 total_samples: 198522
 sum_counts: 198522
-cells_total: 2450
-cells_nonzero: 2365
+cells_total: 9603
+cells_nonzero: 9178
 min_cell_count: 1
-max_cell_count_all: 1113
-target_cell_index: 43, 24
-target_cell_center_m: 3.753660, 1.756065
-target_power_uW: 0.872496
-target_cell_count: 1113
-target_power_dBm: -30.59
+max_cell_count_all: 988
+target_cell_index: 86, 49
+target_cell_center_m: 3.747138, 1.762587
+target_power_uW: 0.874480
+target_cell_count: 988
+target_power_dBm: -30.58
 baseline_folder: AHMET-Phase2-RF-0
 baseline_target_power_uW: 8.687566
 baseline_target_power_dBm: -20.61
-target_gain_linear: 0.100430
-target_gain_db: -9.98
+target_gain_linear: 0.100659
+target_gain_db: -9.97

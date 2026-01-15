@@ -22,7 +22,7 @@ import numpy as np
 
 SAVE_EVERY = 60.0  # seconds
 FOLDER = (
-    "MRT-BD-1"  # subfolder inside data/where to save measurement data
+    "AZF-1"  # subfolder inside data/where to save measurement data
 )
 TIMESTAMP = round(time())
 DEFAULT_DURATION = None  # seconds, override via CLI
@@ -98,6 +98,7 @@ plt = TechtilePlotter(realtime=True)
 
 positions = []
 values = []
+bd_power = []
 last_save = 0
 stop_requested = False
 
@@ -107,6 +108,7 @@ def save_data():
     print("Saving data...")
     positions_snapshot = list(positions)
     values_snapshot = list(values)
+    bd_power_snapshot = list(bd_power)
 
     if len(positions_snapshot) != len(values_snapshot):
         print(
@@ -117,9 +119,11 @@ def save_data():
 
     positions_path = os.path.join(save_dir, f"{TIMESTAMP}_positions.npy")
     values_path = os.path.join(save_dir, f"{TIMESTAMP}_values.npy")
+    bd_power_path = os.path.join(save_dir, f"{TIMESTAMP}_bd_power.npy")
 
     _atomic_save_npy(positions_path, positions_snapshot)
     _atomic_save_npy(values_path, values_snapshot)
+    _atomic_save_npy(bd_power_path, bd_power_snapshot)
     print("Data saved.")
 
 
@@ -238,6 +242,7 @@ try:
         if vals[0] is not None and pos is not None:
             positions.append(pos)
             values.append(d1)
+            bd_power.append(vals[1])
 
             plt.measurements_rt(pos.x, pos.y, pos.z, d1.pwr_pw / 1e6)
             print("x", end="", flush=True)
