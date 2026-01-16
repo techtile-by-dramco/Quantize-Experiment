@@ -14,7 +14,6 @@ from datetime import datetime
 from helper import *
 import json
 import numpy as np
-import cvxpy as cp
 
 # =============================================================================
 #                           Experiment Configuration
@@ -122,139 +121,6 @@ hostnames = []
 csi_P1s = []
 csi_P2s = []
 
-
-def dominant_eigenvector(X):
-    # Compute the dominant eigenvector (eigenvector of the largest eigenvalue)
-    eigvals, eigvecs = np.linalg.eigh(X)
-    idx = np.argmax(eigvals)
-    return eigvecs[:, idx]
-
-
-# %%
-def sdr_solver(H_DL, H_BD, M, scale, alpha, P_max):
-    # For the given channel coefficients, solve the proposed problem and provide proposed BF vector
-    # Compute M_BD and M_DL
-    M_BD = H_BD.conj().T @ H_BD
-    M_DL = H_DL.conj().T @ H_DL
-
-    # Define the semidefinite variable (Hermitian)
-    X_new = cp.Variable((M, M), hermitian=True)
-
-    # Objective: maximize scale * trace(M_BD * X_new)
-    objective = cp.Maximize(scale * cp.real(cp.trace(M_BD @ X_new)))
-
-    # Constraints
-    constraints = [
-        cp.real(cp.trace(scale * (M_DL - alpha * M_BD) @ X_new)) <= 0,
-        X_new >> 0,  # Hermitian positive semidefinite constraint
-    ]
-
-    # Add per-antenna power constraints
-    for i in range(M):
-        constraints.append(cp.real(X_new[i, i]) <= P_max)
-
-    # Problem definition and solve
-    prob = cp.Problem(objective, constraints)
-    prob.solve(
-        solver=cp.MOSEK, verbose=False
-    )  # You can try other solvers, e.g., 'CVXOPT' or 'MOSEK' or 'SCS'
-
-    if X_new.value is None:
-        raise ValueError("Optimization did not converge.")
-
-    # Extract dominant eigenvector
-    w_optimum = dominant_eigenvector(X_new.value)
-
-    # Normalize the beamforming vector
-    w = w_optimum / np.max(np.abs(w_optimum))
-
-    return w
-
-
-# %%
-def cvx_solver(H_DL, h_C, M, scale, alpha, P_max):
-    # For the given channel coefficients, solve the proposed problem and provide proposed BF vector
-
-    # Define the semidefinite variable (Hermitian)
-    x = cp.Variable(M, complex=True)
-
-    # Objective: maximize scale * trace(M_BD * X_new)
-    objective = cp.Maximize(scale * cp.real(h_C.T @ x))
-
-    # Constraints
-    constraints = []
-
-    # Null constraint: scale * H_DL_prime * x == 0
-    constraints.append(scale * H_DL @ x == 0)
-
-    # Add per-antenna power constraints
-    for i in range(M):
-        constraints.append(cp.abs(x[i]) <= np.sqrt(P_max))
-
-    # Problem definition and solve
-    prob = cp.Problem(objective, constraints)
-    prob.solve(
-        solver=cp.MOSEK, verbose=False
-    )  # You can try other solvers, e.g., 'CVXOPT' or 'MOSEK' or 'SCS'
-
-    if x.value is None:
-        raise ValueError("Optimization did not converge.")
-
-    # Solution: normalize beamforming vector
-    w = x.value / np.max(np.abs(x.value))
-
-    return w
-
-from scipy.constants import c as v_c
-
-
-def compute_bf_phases(
-    H_DL, 
-    h_C,
-    alpha=0,
-    scale=1e1,
-):
-
-    # h_C = np.exp(1j*np.asarray(phi2))
-    # H_DL = np.exp(1j * np.asarray(phi1))
-
-    # Ensure H_DL is a row vector
-    if H_DL.shape[0] != 1:
-        H_DL = H_DL.T
-
-    # Constants
-    _lambda = v_c / 920e6  # Wavelength
-
-    # Distance and channel
-    distance = 1
-    h_R = _lambda / (4 * np.pi * distance)
-    h_R = np.array([h_R])[:, np.newaxis]
-
-    # Channels
-    H_BD = h_R * h_C.T
-
-    # Dimensions
-    M = len(h_C)
-    N = len(h_R)
-    P_max = 1
-
-    # Beamforming
-    if alpha == 0:
-        w = cvx_solver(H_DL, h_C, M, scale, alpha, P_max)
-    else:
-        w = sdr_solver(H_DL, H_BD, M, scale, alpha, P_max)
-
-    # Extract phase
-    w_angle = np.angle(w)
-
-    # Compute constraint and objective values
-    const = (np.linalg.norm(H_DL @ w) / np.linalg.norm(H_BD @ w)) ** 2
-    obj = (np.linalg.norm(H_BD @ w)) ** 2
-
-    print(f"Constraint is {const:.9f}")
-    print(f"Objective is {obj:.9f}\n")
-
-    return w_angle
 
 
 with open(output_path, "w") as f:
@@ -364,7 +230,7 @@ with open(output_path, "w") as f:
         if messages_received == 0:
             continue
 
-        angles = compute_bf_phases(np.asarray(csi_P1s), np.asarray(csi_P2s))
+        angles = -np.angle(np.asarray(csi_P1s)) # MRT
 
         # Send individual replies to all identities
         for identity, bf_angle in zip(identities, angles):

@@ -22,7 +22,7 @@ import numpy as np
 
 SAVE_EVERY = 60.0  # seconds
 FOLDER = (
-    "AZF-1"  # subfolder inside data/where to save measurement data
+    "Baseline-1-pilot"  # subfolder inside data/where to save measurement data
 )
 TIMESTAMP = round(time())
 DEFAULT_DURATION = None  # seconds, override via CLI

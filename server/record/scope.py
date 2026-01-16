@@ -108,5 +108,4 @@ if __name__ == "__main__":
         print("Scope setup already ok!")
 
     data = scope.read_measurements()
-    print(data)
 
