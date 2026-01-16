@@ -64,6 +64,9 @@ if [[ "${INSTALL_PACKAGES:-0}" == "1" ]]; then
     echo "Installing required packages..."
     pip install --upgrade --quiet pip
     pip install --upgrade --quiet ansible-runner ansible-core pyzmq pyvisa numpy scipy
+    pip install git+https://github.com/techtile-by-dramco/positioner
+    pip install git+https://github.com/techtile-by-dramco/plotter
+    
     # add other python packages you might need
 fi
 
