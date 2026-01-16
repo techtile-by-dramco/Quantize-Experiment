@@ -26,6 +26,7 @@ class scope_data(object):
 WAVELENGTH = 3e8 / 920e6  # meters
 GRID_RES = 0.04 * WAVELENGTH  # meters (default; overridden by --grid-res-lambda)
 SMALL_POWER_UW = 1e-8  # threshold for reporting tiny measurements (micro-watts)
+ZOOM_HALF_SIZE = 0.5 * WAVELENGTH  # meters, half-width/height for target zoom plots
 DEFAULT_BASELINE_FOLDER = "RANDOM-1"
 
 
@@ -39,6 +40,25 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 
+def parse_target_location(value, source_label):
+    """Parse target_location as [x, y, z?] from a string or list."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        parts = [p.strip() for p in value.split(",") if p.strip()]
+    elif isinstance(value, (list, tuple)):
+        parts = list(value)
+    else:
+        print(f"Warning: target_location in {source_label} has unsupported type; ignoring.")
+        return None
+    try:
+        vals = [float(p) for p in parts]
+    except Exception as exc:
+        print(f"Warning: failed to parse target_location in {source_label}: {exc}")
+        return None
+    return vals if len(vals) >= 2 else None
+
+
 def load_target_from_settings(settings_path=SETTINGS_PATH):
     """Return target_location from experiment-settings.yaml as [x, y, z?]."""
     if not os.path.exists(settings_path):
@@ -47,16 +67,7 @@ def load_target_from_settings(settings_path=SETTINGS_PATH):
         with open(settings_path, "r", encoding="utf-8") as fh:
             settings = yaml.safe_load(fh) or {}
         target = settings.get("experiment_config", {}).get("target_location")
-        if target is None:
-            return None
-        if isinstance(target, str):
-            parts = [p.strip() for p in target.split(",") if p.strip()]
-        elif isinstance(target, (list, tuple)):
-            parts = list(target)
-        else:
-            return None
-        vals = [float(p) for p in parts]
-        return vals if len(vals) >= 2 else None
+        return parse_target_location(target, settings_path)
     except Exception as exc:
         print(f"Failed to load target_location from {settings_path}: {exc}", file=sys.stderr)
         return None
@@ -578,6 +589,29 @@ def _cell_center(i_x, i_y, x_edges, y_edges):
     return cx, cy
 
 
+def clip_heatmap_to_window(heatmap, counts, x_edges, y_edges, center_xy, half_size):
+    """Return a clipped heatmap/counts/edges around center_xy with given half_size."""
+    if heatmap.size == 0 or center_xy is None:
+        return None
+    cx, cy = center_xy
+    x0, x1 = cx - half_size, cx + half_size
+    y0, y1 = cy - half_size, cy + half_size
+
+    ix_start = max(np.searchsorted(x_edges, x0, side="right") - 1, 0)
+    ix_end = min(np.searchsorted(x_edges, x1, side="left"), len(x_edges) - 1)
+    iy_start = max(np.searchsorted(y_edges, y0, side="right") - 1, 0)
+    iy_end = min(np.searchsorted(y_edges, y1, side="left"), len(y_edges) - 1)
+
+    if ix_end <= ix_start or iy_end <= iy_start:
+        return None
+
+    clipped_heatmap = heatmap[ix_start:ix_end, iy_start:iy_end]
+    clipped_counts = counts[ix_start:ix_end, iy_start:iy_end] if counts is not None else None
+    clipped_x_edges = x_edges[ix_start:ix_end + 1]
+    clipped_y_edges = y_edges[iy_start:iy_end + 1]
+    return clipped_heatmap, clipped_counts, clipped_x_edges, clipped_y_edges
+
+
 def write_folder_log(
     folder,
     heatmap,
@@ -1030,8 +1064,8 @@ def main():
     if args.grid_res_lambda:
         grid_res = float(args.grid_res_lambda) * WAVELENGTH
 
-    target_vals = None
-    target_rect = None
+    target_vals = load_target_from_settings()
+    target_rect = target_rect_from_xyz(target_vals) if target_vals else None
 
     # Sort subfolders by modification time (newest first) to view recent runs first
     folder_entries = []
@@ -1118,6 +1152,12 @@ def main():
         folder_vdmax = apply_config("vdmax", args.vdmax, cli_flags["vdmax"])
         baseline_override_name = apply_config("baseline-folder", baseline_folder_name, cli_flags["baseline_folder"])
         baseline_override_name = baseline_override_name.strip() if isinstance(baseline_override_name, str) else ""
+        folder_target_vals = None
+        if "target_location" in folder_config:
+            folder_target_vals = parse_target_location(
+                folder_config.get("target_location"),
+                os.path.join(folder_path, "config.yml"),
+            )
 
         if folder_vmin is not None and folder_vmax is not None and folder_vmin > folder_vmax:
             raise ValueError(
@@ -1162,9 +1202,12 @@ def main():
         xs = np.array([p.x for p in positions], dtype=float)
         ys = np.array([p.y for p in positions], dtype=float)
 
-        if len(xs) and len(ys):
-            target_vals = [float(xs[0]), float(ys[0])]
-            target_rect = target_rect_from_xyz(target_vals)
+        active_target_vals = folder_target_vals or target_vals
+        if active_target_vals is None and len(xs) and len(ys):
+            active_target_vals = [float(xs[0]), float(ys[0])]
+            if target_vals is None and folder_target_vals is None:
+                target_vals = active_target_vals
+        active_target_rect = target_rect_from_xyz(active_target_vals) if active_target_vals else None
 
         heatmap, counts, x_edges, y_edges, xi, yi = compute_heatmap(
             xs, ys, vs, grid_res, agg=args.agg
@@ -1173,6 +1216,15 @@ def main():
             heatmap = fill_empty_cells_nearest(heatmap)
 
         heatmap_dbm = heatmap_to_dbm(heatmap)
+        zoomed = None
+        zoom_heatmap_dbm = None
+        if active_target_vals is not None:
+            zoomed = clip_heatmap_to_window(
+                heatmap, counts, x_edges, y_edges, active_target_vals, ZOOM_HALF_SIZE
+            )
+            if zoomed is not None:
+                zoom_heatmap, zoom_counts, zoom_x_edges, zoom_y_edges = zoomed
+                zoom_heatmap_dbm = heatmap_to_dbm(zoom_heatmap)
         if (
             args.vmin is not None
             or args.vmax is not None
@@ -1195,7 +1247,7 @@ def main():
                 y_edges,
                 heatmap,
                 title=f"{os.path.basename(folder_path)} | {args.agg} power [uW]",
-                target_rect=target_rect,
+                target_rect=active_target_rect,
             )
             export_heatmap_csv(folder_path, heatmap_dbm, x_edges, y_edges, suffix="dBm")
             export_heatmap_tex(
@@ -1205,10 +1257,42 @@ def main():
                 heatmap_dbm,
                 suffix="dBm",
                 title=f"{os.path.basename(folder_path)} | {args.agg} power [dBm]",
-                target_rect=target_rect,
+                target_rect=active_target_rect,
                 vmin=folder_vmin,
                 vmax=folder_vmax,
             )
+            if zoomed is not None:
+                export_heatmap_csv(
+                    folder_path, zoom_heatmap, zoom_x_edges, zoom_y_edges, suffix="zoom"
+                )
+                export_heatmap_tex(
+                    folder_path,
+                    zoom_x_edges,
+                    zoom_y_edges,
+                    zoom_heatmap,
+                    suffix="zoom",
+                    title=f"{os.path.basename(folder_path)} | {args.agg} power [uW] (zoom)",
+                    target_rect=active_target_rect,
+                )
+                if zoom_heatmap_dbm is not None:
+                    export_heatmap_csv(
+                        folder_path,
+                        zoom_heatmap_dbm,
+                        zoom_x_edges,
+                        zoom_y_edges,
+                        suffix="zoom_dBm",
+                    )
+                    export_heatmap_tex(
+                        folder_path,
+                        zoom_x_edges,
+                        zoom_y_edges,
+                        zoom_heatmap_dbm,
+                        suffix="zoom_dBm",
+                        title=f"{os.path.basename(folder_path)} | {args.agg} power [dBm] (zoom)",
+                        target_rect=active_target_rect,
+                        vmin=folder_vmin,
+                        vmax=folder_vmax,
+                    )
 
         # If baseline available, compute aligned heatmap and plot delta
         if baseline_override_name:
@@ -1254,7 +1338,7 @@ def main():
                 curr_baseline_heatmap,
                 curr_baseline_x_edges,
                 curr_baseline_y_edges,
-                target_rect,
+                active_target_rect,
             )
             gain_title = None
             if global_gain:
@@ -1278,7 +1362,7 @@ def main():
                 curr_baseline_y_edges,
                 vdmin=folder_vdmin,
                 vdmax=folder_vdmax,
-                target_rect=target_rect,
+                target_rect=active_target_rect,
                 show=not args.save_only,
                 save_bitmap=args.export_csv,
                 png_name=f"heatmap_vs_{baseline_override_name}_dB.png",
@@ -1297,8 +1381,48 @@ def main():
                     diff_map,
                     suffix=suffix,
                     title=f"{os.path.basename(folder_path)} - {baseline_override_name} [dB]{' | ' + gain_title if gain_title else ''}",
-                    target_rect=target_rect,
+                    target_rect=active_target_rect,
                 )
+            if target_vals is not None:
+                zoomed_diff = clip_heatmap_to_window(
+                    diff_map,
+                    None,
+                    curr_baseline_x_edges,
+                    curr_baseline_y_edges,
+                    active_target_vals,
+                    ZOOM_HALF_SIZE,
+                )
+                if zoomed_diff is not None:
+                    zoom_diff, _, zoom_x_edges, zoom_y_edges = zoomed_diff
+                    plot_diff_heatmap(
+                        folder_path,
+                        baseline_override_name,
+                        zoom_diff,
+                        zoom_x_edges,
+                        zoom_y_edges,
+                        vdmin=folder_vdmin,
+                        vdmax=folder_vdmax,
+                        target_rect=active_target_rect,
+                        show=not args.save_only,
+                        save_bitmap=args.export_csv,
+                        png_name=f"heatmap_zoom_vs_{baseline_override_name}_dB.png",
+                        bitmap_name=f"heatmap_zoom_vs_{baseline_override_name}_dB_bitmap.png",
+                        title_override=gain_title,
+                    )
+                    if args.export_csv:
+                        zoom_suffix = f"zoom_vs_{baseline_override_name}_dB"
+                        export_heatmap_csv(
+                            folder_path, zoom_diff, zoom_x_edges, zoom_y_edges, suffix=zoom_suffix
+                        )
+                        export_heatmap_tex(
+                            folder_path,
+                            zoom_x_edges,
+                            zoom_y_edges,
+                            zoom_diff,
+                            suffix=zoom_suffix,
+                            title=f"{os.path.basename(folder_path)} - {baseline_override_name} [dB] (zoom){' | ' + gain_title if gain_title else ''}",
+                            target_rect=active_target_rect,
+                        )
 
         recent_cells = None
         if args.plot_movement:
@@ -1321,7 +1445,7 @@ def main():
             counts,
             x_edges,
             y_edges,
-            target_vals,
+            active_target_vals,
             args.agg,
             bd_power_pw=bd_power,
             first_cell=first_cell,
@@ -1338,7 +1462,7 @@ def main():
             x_edges,
             y_edges,
             recent_cells,
-            target_rect,
+            active_target_rect,
             agg=args.agg,
             cmin=folder_cmin,
             cmax=folder_cmax,
@@ -1349,6 +1473,26 @@ def main():
             png_name="heatmap.png",
             bitmap_name="heatmap_bitmap.png",
         )
+        if zoomed is not None:
+            zoom_heatmap, zoom_counts, zoom_x_edges, zoom_y_edges = zoomed
+            plot_heatmap(
+                folder_path,
+                zoom_heatmap,
+                zoom_counts,
+                zoom_x_edges,
+                zoom_y_edges,
+                recent_cells=None,
+                target_rect=active_target_rect,
+                agg=args.agg,
+                cmin=folder_cmin,
+                cmax=folder_cmax,
+                vmin=folder_vmin,
+                vmax=folder_vmax,
+                show=not args.save_only,
+                save_bitmap=args.export_csv,
+                png_name="heatmap_zoom.png",
+                bitmap_name="heatmap_zoom_bitmap.png",
+            )
         if not args.plot_all:
             break
 
