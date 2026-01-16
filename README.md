@@ -131,6 +131,24 @@ python server/record/record-meas-energy-profiler.py
 - Post-process: `processing/process-energy-ball.py --plot`
 - Plotting: matplotlib heatmaps or `processing/plot_all_folders_heatmap_live.py`
 
+```bash
+python run-clients.py --start -a
+python run-clients.py --stop -a
+```
+
+```bash
+python record/record-meas-energy-profiler.py
+```
+
+```bash
+python server/record/sync-BF-server.py --num-subscribers 42 --num-pilots 1
+```
+
+```bash
+python usrp_pilot.py --pilot 1
+```
+
+
 </details>
 
 ---
