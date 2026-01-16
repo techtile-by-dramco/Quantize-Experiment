@@ -6,7 +6,7 @@ organisation: "techtile-by-dramco"  # github org
 
 # Server settings
 server:
-  host: "techtile-geof.local"
+  host: "techtile-tianzheng.local"
   messaging_port: 5678
   sync_port: 5679
 heartbeat_interval: 10

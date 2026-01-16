@@ -21,3 +21,4 @@ server/lib64/*
 server/pyvenv.cfg
 server/utils/__pycache__
 *.pyc
+data/
