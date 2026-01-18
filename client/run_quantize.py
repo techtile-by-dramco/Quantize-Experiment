@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import logging
 import os
 import socket
@@ -16,41 +19,47 @@ import queue
 # =============================================================================
 #                           Experiment Configuration
 # =============================================================================
-CMD_DELAY = 0.05
-RX_TX_SAME_CHANNEL = True
-CLOCK_TIMEOUT = 1000
-INIT_DELAY = 0.2
-RATE = 250e3
-LOOPBACK_TX_GAIN = 50
-RX_GAIN = 22
-CAPTURE_TIME = 10
-FREQ = 0
-meas_id = 0
-exp_id = 0
-
-# ---- 1-bit DAC + dithering defaults (can be overridden by cal-settings.yml) ---
-DITHER_SIGMA2 = 1.0e-3   # CN(0, sigma2 I) per sample
-TX_SCALE = 0.9           # extra digital scaling to avoid saturation/clipping
-# -----------------------------------------------------------------------------
+CMD_DELAY = 0.05  # Command delay (50 ms) between USRP instructions
+RX_TX_SAME_CHANNEL = True  # True if loopback occurs between the same RF channel
+CLOCK_TIMEOUT = 1000  # Timeout for external clock locking (in ms)
+INIT_DELAY = 0.2  # Initial delay before starting transmission (200 ms)
+RATE = 250e3  # Sampling rate in samples per second (250 kSps)
+LOOPBACK_TX_GAIN = 50  # Empirically determined transmit gain for loopback tests
+RX_GAIN = 22  # Not directly used below (kept for compatibility)
+CAPTURE_TIME = 10  # Duration of each capture in seconds
+FREQ = 0  # Base frequency offset (Hz); 0 means use default center frequency
+meas_id = 0  # Measurement identifier
+exp_id = 0  # Experiment identifier
 
 results = []
 
-SWITCH_LOOPBACK_MODE = 0x00000006
+SWITCH_LOOPBACK_MODE = 0x00000006  # which is 110
 SWITCH_RESET_MODE = 0x00000000
 
 context = zmq.Context()
-
 iq_socket = context.socket(zmq.PUB)
 iq_socket.bind(f"tcp://*:{50001}")
 
 HOSTNAME = socket.gethostname()[4:]
 file_open = False
 
+# =============================================================================
+#                   1-bit DAC Quantization (with optional dithering)
+# =============================================================================
+ENABLE_1BIT_DAC = True          # True: enable 1-bit quantizer after precoding
+ENABLE_DITHER = False            # True: add dither before 1-bit quantization
+DITHER_REL_STD = 0.10           # dither std relative to signal RMS amplitude (per sample)
+ONEBIT_POWER_NORM = True        # normalize 1-bit output to match input RMS power
+DITHER_SEED_BASE = 12345        # reproducible base seed
+# =============================================================================
+
 
 # =============================================================================
 #                           Custom Log Formatter
 # =============================================================================
 class LogFormatter(logging.Formatter):
+    """Custom log formatter that prints timestamps with fractional seconds."""
+
     @staticmethod
     def pp_now():
         now = datetime.now()
@@ -66,12 +75,14 @@ class LogFormatter(logging.Formatter):
 
 
 class ColoredFormatter(LogFormatter):
+    """Console formatter with ANSI colors per level."""
+
     COLORS = {
-        logging.DEBUG: "\033[36m",
-        logging.INFO: "\033[32m",
-        logging.WARNING: "\033[33m",
-        logging.ERROR: "\033[31m",
-        logging.CRITICAL: "\033[35m",
+        logging.DEBUG: "\033[36m",     # cyan
+        logging.INFO: "\033[32m",      # green
+        logging.WARNING: "\033[33m",   # yellow
+        logging.ERROR: "\033[31m",     # red
+        logging.CRITICAL: "\033[35m",  # magenta
     }
     RESET = "\033[0m"
 
@@ -83,6 +94,7 @@ class ColoredFormatter(LogFormatter):
 
 
 def fmt(val):
+    """Format float to 0.3f."""
     try:
         return f"{float(val):.3f}"
     except Exception:
@@ -120,6 +132,7 @@ TOPIC_CH0 = b"CH0"
 TOPIC_CH1 = b"CH1"
 
 if RX_TX_SAME_CHANNEL:
+    # Reference signal received on CH0, loopback on CH1
     REF_RX_CH = FREE_TX_CH = 0
     LOOPBACK_RX_CH = LOOPBACK_TX_CH = 1
     logger.debug("\nPLL REF → CH0 RX\nCH1 TX → CH1 RX\nCH0 TX →")
@@ -130,30 +143,56 @@ else:
 
 
 # =============================================================================
-#                    1-bit DAC Quantization + Dithering
+#                   Dither + 1-bit Quantization helpers
 # =============================================================================
-def quantize_1bit(x: np.ndarray, eta: float) -> np.ndarray:
+def add_complex_dither(x: np.ndarray, rel_std: float, rng: np.random.Generator) -> np.ndarray:
     """
-    1-bit complex quantizer:
-        Q(z) = sqrt(eta/2) * (sgn(Re{z}) + j*sgn(Im{z}))
+    Add zero-mean complex Gaussian dither to x.
+    rel_std is relative to RMS(|x|). Dither is applied per sample.
     """
-    re = np.where(np.real(x) >= 0, 1.0, -1.0)
-    im = np.where(np.imag(x) >= 0, 1.0, -1.0)
-    return (np.sqrt(eta / 2.0) * (re + 1j * im)).astype(np.complex64)
+    if rel_std <= 0:
+        return x
+    if x.size == 0:
+        return x
+
+    rms = float(np.sqrt(np.mean(np.abs(x) ** 2)))
+    if rms <= 0:
+        return x
+
+    sigma = rel_std * rms
+    d = (rng.normal(0.0, sigma / np.sqrt(2), size=x.shape) +
+         1j * rng.normal(0.0, sigma / np.sqrt(2), size=x.shape)).astype(np.complex64)
+    return x + d
 
 
-def gaussian_dither(shape, sigma2: float) -> np.ndarray:
+def one_bit_quantize_complex(x: np.ndarray, power_norm: bool = True, eps: float = 1e-12) -> np.ndarray:
     """
-    Complex circular Gaussian dither CN(0, sigma2 I)
+    1-bit quantization per real/imag part:
+        q = sign(Re{x}) + j*sign(Im{x})
+    Optional: normalize q to match the RMS power of x.
     """
-    sigma = np.sqrt(float(sigma2))
-    return ((sigma / np.sqrt(2.0)) * (np.random.randn(*shape) + 1j * np.random.randn(*shape))).astype(
-        np.complex64
-    )
+    if x.size == 0:
+        return x.astype(np.complex64)
+
+    re = np.real(x)
+    im = np.imag(x)
+
+    # sign(0)->+1 (deterministic)
+    re_q = np.where(re >= 0, 1.0, -1.0)
+    im_q = np.where(im >= 0, 1.0, -1.0)
+    q = (re_q + 1j * im_q).astype(np.complex64)
+
+    if not power_norm:
+        return q
+
+    p_in = float(np.mean(np.abs(x) ** 2))
+    p_q = float(np.mean(np.abs(q) ** 2))
+    scale = np.sqrt(max(p_in, eps) / max(p_q, eps))
+    return (scale * q).astype(np.complex64)
 
 
 # =============================================================================
-# RX
+#                           RX: reference capture + phase estimation
 # =============================================================================
 def rx_ref(usrp, rx_streamer, quit_event, duration, result_queue, start_time=None):
     logger.debug(f"GAIN IS CH0: {usrp.get_rx_gain(0)} CH1: {usrp.get_rx_gain(1)}")
@@ -168,8 +207,8 @@ def rx_ref(usrp, rx_streamer, quit_event, duration, result_queue, start_time=Non
 
     stream_cmd = uhd.types.StreamCMD(uhd.types.StreamMode.start_cont)
     stream_cmd.stream_now = False
-
     timeout = 1.0
+
     if start_time is not None:
         stream_cmd.time_spec = start_time
         time_diff = start_time.get_real_secs() - usrp.get_time_now().get_real_secs()
@@ -193,9 +232,7 @@ def rx_ref(usrp, rx_streamer, quit_event, duration, result_queue, start_time=Non
                     if num_rx_i > 0:
                         samples = recv_buffer[:, :num_rx_i]
                         if num_rx + num_rx_i > buffer_length:
-                            logger.error(
-                                "more samples received than buffer long, not storing the data"
-                            )
+                            logger.error("more samples received than buffer long, not storing the data")
                         else:
                             iq_data[:, num_rx: num_rx + num_rx_i] = samples
                             num_rx += num_rx_i
@@ -206,10 +243,9 @@ def rx_ref(usrp, rx_streamer, quit_event, duration, result_queue, start_time=Non
         pass
     finally:
         logger.debug("CTRL+C is pressed or duration is reached, closing off ")
-        rx_streamer.issue_stream_cmd(
-            uhd.types.StreamCMD(uhd.types.StreamMode.stop_cont)
-        )
+        rx_streamer.issue_stream_cmd(uhd.types.StreamCMD(uhd.types.StreamMode.stop_cont))
 
+        # Drop first 1s to avoid transients
         iq_samples = iq_data[:, int(RATE * 1): num_rx]
 
         phase_ch0, freq_slope_ch0_before, freq_slope_ch0_after = tools.get_phases_and_apply_bandpass(
@@ -244,10 +280,7 @@ def rx_ref(usrp, rx_streamer, quit_event, duration, result_queue, start_time=Non
 
         _circ_mean = tools.circmean(phase_diff, deg=False)
 
-        avg_ampl = np.mean(np.abs(iq_samples), axis=1)
         A_rms = np.sqrt(np.mean(np.abs(iq_samples) ** 2, axis=1))
-
-        # Keep your existing convention: put CH1 RMS and phase diff
         result_queue.put((A_rms[1], _circ_mean))
 
         max_I = np.max(np.abs(np.real(iq_samples)), axis=1)
@@ -261,15 +294,12 @@ def rx_ref(usrp, rx_streamer, quit_event, duration, result_queue, start_time=Non
             fmt(max_Q[1]),
         )
 
-        logger.debug(
-            "AVG AMPL IQ CH0: %s CH1: %s",
-            fmt(avg_ampl[0]),
-            fmt(avg_ampl[1]),
-        )
+        avg_ampl = np.mean(np.abs(iq_samples), axis=1)
+        logger.debug("AVG AMPL IQ CH0: %s CH1: %s", fmt(avg_ampl[0]), fmt(avg_ampl[1]))
 
 
 # =============================================================================
-# Setup helpers
+#                           USRP Clock/PPS/Tune
 # =============================================================================
 def setup_clock(usrp, clock_src, num_mboards):
     usrp.set_clock_source(clock_src)
@@ -340,6 +370,9 @@ def tune_usrp(usrp, freq, channels, at_time):
     logger.info("TX LO is locked")
 
 
+# =============================================================================
+#                           Server Sync
+# =============================================================================
 def wait_till_go_from_server(ip, _connect=True):
     global meas_id, file_open, data_file, file_name
 
@@ -356,7 +389,8 @@ def wait_till_go_from_server(ip, _connect=True):
     alive_socket.send_string(HOSTNAME)
 
     logger.debug("Waiting on SYNC from server %s.", ip)
-    meas_id, unique_id = sync_socket.recv_string().split(" ")
+    _meas_id_str, unique_id = sync_socket.recv_string().split(" ")
+    meas_id = int(_meas_id_str)
 
     file_name = f"data_{HOSTNAME}_{unique_id}_{meas_id}"
 
@@ -364,7 +398,7 @@ def wait_till_go_from_server(ip, _connect=True):
         data_file = open(f"data_{HOSTNAME}_{unique_id}.txt", "a")
         file_open = True
 
-    logger.debug(meas_id)
+    logger.debug("meas_id=%s", meas_id)
 
     alive_socket.close()
     sync_socket.close()
@@ -384,10 +418,9 @@ def setup(usrp, SERVER_IP, connect=True):
     assert (mcr / rate).is_integer(), (
         f"The masterclock rate {mcr} should be an integer multiple of the sampling rate {rate}"
     )
-
     usrp.set_master_clock_rate(mcr)
-    channels = [0, 1]
 
+    channels = [0, 1]
     setup_clock(usrp, "external", usrp.get_num_mboards())
     setup_pps(usrp, "external")
 
@@ -399,11 +432,10 @@ def setup(usrp, SERVER_IP, connect=True):
         usrp.set_rx_bandwidth(rx_bw, chan)
         usrp.set_rx_agc(False, chan)
 
-    # TX gains
+    # These are overridden by cal-settings.yml below (FREE_TX_GAIN/REF_RX_GAIN/...)
     usrp.set_tx_gain(LOOPBACK_TX_GAIN, LOOPBACK_TX_CH)
     usrp.set_tx_gain(LOOPBACK_TX_GAIN, FREE_TX_CH)
 
-    # RX gains from YAML (these must exist in cal-settings.yml)
     usrp.set_rx_gain(LOOPBACK_RX_GAIN, LOOPBACK_RX_CH)
     usrp.set_rx_gain(REF_RX_GAIN, REF_RX_CH)
 
@@ -418,20 +450,18 @@ def setup(usrp, SERVER_IP, connect=True):
     logger.info("Setting device timestamp to 0...")
     usrp.set_time_unknown_pps(uhd.types.TimeSpec(0.0))
     logger.debug("[SYNC] Resetting time.")
-
     logger.info(f"RX GAIN PROFILE CH0: {usrp.get_rx_gain_names(0)}")
     logger.info(f"RX GAIN PROFILE CH1: {usrp.get_rx_gain_names(1)}")
 
     time.sleep(2)
-
     tune_usrp(usrp, FREQ, channels, at_time=begin_time)
-    logger.info(f"USRP has been tuned and setup. ({usrp.get_time_now().get_real_secs()})")
 
+    logger.info(f"USRP has been tuned and setup. ({usrp.get_time_now().get_real_secs()})")
     return tx_streamer, rx_streamer
 
 
 # =============================================================================
-# Thread helpers
+#                           Thread wrappers
 # =============================================================================
 def rx_thread(usrp, rx_streamer, quit_event, duration, res, start_time=None):
     _rx_thread = threading.Thread(
@@ -460,6 +490,10 @@ def delta(usrp, at_time):
     return at_time - usrp.get_time_now().get_real_secs()
 
 
+def get_current_time(usrp):
+    return usrp.get_time_now().get_real_secs()
+
+
 def tx_thread(usrp, tx_streamer, quit_event, phase=[0, 0], amplitude=[0.8, 0.8], start_time=None):
     tx_thr = threading.Thread(
         target=tx_ref,
@@ -471,76 +505,69 @@ def tx_thread(usrp, tx_streamer, quit_event, phase=[0, 0], amplitude=[0.8, 0.8],
 
 
 # =============================================================================
-# TX (MODIFIED): Linear precoding + Gaussian dithering + 1-bit quantization
+#                           TX: reference signal (MODIFIED for 1-bit + dither)
 # =============================================================================
 def tx_ref(usrp, tx_streamer, quit_event, phase, amplitude, start_time=None):
     """
-    MODIFIED for 1-bit DAC verification (per-antenna 1-bit complex quantization + dithering).
+    Transmit a continuous reference signal on all active channels.
 
-    Interpretation:
-      - phase[] carries your intended relative phase per TX channel (you pass tx_phase in phase[LOOPBACK_TX_CH])
-      - We build a 1-stream precoder vector w = [1, exp(j*phase_ch1)] / sqrt(N)
-      - Generate a simple constant symbol s (or you can replace with random QPSK/16QAM later)
-      - x = w*s
-      - x_q = Q(x + d), Q is 1-bit complex quantizer, d ~ CN(0, sigma^2 I)
-      - Send x_q continuously
-
-    Notes:
-      - amplitude[] is kept in signature to keep your pipeline unchanged,
-        but the 1-bit signal magnitude is controlled by eta + TX_SCALE.
+    This version implements:
+      precoded signal -> (optional dither) -> 1-bit quantization -> USRP
     """
     num_channels = tx_streamer.get_num_channels()
     max_samps_per_packet = tx_streamer.get_max_num_samps()
 
-    phase = np.asarray(phase, dtype=np.float64)
+    amplitude = np.asarray(amplitude)
+    phase = np.asarray(phase)
 
-    # Paper-style normalization: eta = 1/N
-    N = int(num_channels)
-    eta = 1.0 / float(N)
+    # Precoded "single-tone" complex weight per channel
+    sample = amplitude * np.exp(1j * phase)
 
-    # Precoder vector w (N x 1).
-    # We assume ch0 is reference = 1, and ch1 gets the requested phase.
-    w = np.zeros((N, 1), dtype=np.complex64)
-    w[0, 0] = 1.0 + 0j
+    N = 1000 * max_samps_per_packet
+    transmit_buffer = np.ones((num_channels, N), dtype=np.complex64)
 
-    if N > 1:
-        w[1, 0] = np.exp(1j * float(phase[1]))
-    # If you ever have N>2, extend here:
-    for k in range(2, N):
-        w[k, 0] = 1.0 + 0j
+    # Reproducible RNG per measurement id
+    try:
+        seed = int(DITHER_SEED_BASE + int(meas_id))
+    except Exception:
+        seed = int(DITHER_SEED_BASE)
+    rng = np.random.default_rng(seed)
 
-    w /= np.sqrt(N)
+    # Build per-channel waveform: constant vector -> dither -> 1-bit quantize
+    for ch in range(num_channels):
+        x = (sample[ch] * np.ones(N, dtype=np.complex64))
 
-    # Simple constant symbol (unit power)
-    s = (1.0 + 1j) / np.sqrt(2.0)
+        if ENABLE_DITHER:
+            x = add_complex_dither(x, rel_std=DITHER_REL_STD, rng=rng)
 
-    x = w * np.complex64(s)  # (N, 1)
+        if ENABLE_1BIT_DAC:
+            x = one_bit_quantize_complex(x, power_norm=ONEBIT_POWER_NORM)
 
-    # Build a long block
-    L = 1000 * int(max_samps_per_packet)
-    x_block = np.repeat(x, L, axis=1)  # (N, L)
+        transmit_buffer[ch, :] = x
 
-    # Dither + 1-bit quantization
-    d = gaussian_dither(x_block.shape, sigma2=DITHER_SIGMA2)
-    x_q = quantize_1bit(x_block + d, eta=eta)
+    # Optional debug (first samples only)
+    if ENABLE_1BIT_DAC:
+        u_re = np.unique(np.real(transmit_buffer[LOOPBACK_TX_CH, :16]))
+        u_im = np.unique(np.imag(transmit_buffer[LOOPBACK_TX_CH, :16]))
+        logger.debug(
+            "1-bit TX example (ch=%d): Re unique=%s Im unique=%s",
+            LOOPBACK_TX_CH,
+            u_re,
+            u_im,
+        )
 
-    transmit_buffer = (TX_SCALE * x_q).astype(np.complex64)
-
-    # Timed TX metadata
     tx_md = uhd.types.TXMetadata()
+
     if start_time is not None:
         tx_md.time_spec = start_time
     else:
         tx_md.time_spec = uhd.types.TimeSpec(
             usrp.get_time_now().get_real_secs() + INIT_DELAY
         )
+
     tx_md.has_time_spec = True
 
     try:
-        # First send uses the time spec
-        tx_streamer.send(transmit_buffer, tx_md)
-        tx_md.has_time_spec = False
-
         while not quit_event.is_set():
             tx_streamer.send(transmit_buffer, tx_md)
 
@@ -564,7 +591,7 @@ def starting_in(usrp, at_time):
 
 
 # =============================================================================
-# Measurement blocks
+#                           Measurements
 # =============================================================================
 def measure_pilot(usrp, tx_streamer, rx_streamer, quit_event, result_queue, at_time=None):
     logger.debug("########### Measure PILOT ###########")
@@ -612,8 +639,6 @@ def measure_loopback(usrp, tx_streamer, rx_streamer, quit_event, result_queue, a
     except Exception as e:
         logger.error(e)
 
-    # NOTE: Loopback uses the same tx_ref() function (now 1-bit). If you want loopback to remain "analog clean"
-    # (no 1-bit), you can add a flag and use the old tx_ref for loopback.
     tx_thr = tx_thread(
         usrp,
         tx_streamer,
@@ -622,6 +647,7 @@ def measure_loopback(usrp, tx_streamer, rx_streamer, quit_event, result_queue, a
         phase=[0.0, 0.0],
         start_time=start_time,
     )
+
     tx_meta_thr = tx_meta_thread(tx_streamer, quit_event)
 
     rx_thr = rx_thread(
@@ -647,7 +673,7 @@ def measure_loopback(usrp, tx_streamer, rx_streamer, quit_event, result_queue, a
 
 
 # =============================================================================
-# CSI exchange
+#                           BF helper (CSI -> server -> phi_BF)
 # =============================================================================
 def get_BF(ampl_P1, phi_P1, ampl_P2, phi_P2):
     import json
@@ -688,11 +714,8 @@ def get_BF(ampl_P1, phi_P1, ampl_P2, phi_P2):
     return result
 
 
-# =============================================================================
-# TX with phase correction (uses the new 1-bit tx_ref())
-# =============================================================================
 def tx_phase_coh(usrp, tx_streamer, quit_event, phase_corr, at_time, long_time=True):
-    logger.debug("########### TX with adjusted phases (1-bit + dither) ###########")
+    logger.debug("########### TX with adjusted phases ###########")
 
     phases = [0.0, 0.0]
     amplitudes = [0.0, 0.0]
@@ -731,19 +754,24 @@ def tx_phase_coh(usrp, tx_streamer, quit_event, phase_corr, at_time, long_time=T
     tx_meta_thr.join()
 
     logger.debug("Transmission completed successfully")
-
     quit_event.clear()
     return tx_thr, tx_meta_thr
 
 
 # =============================================================================
-# CLI
+#                           CLI + Main
 # =============================================================================
 def parse_arguments():
     global SERVER_IP
 
-    parser = argparse.ArgumentParser(description="Beamforming control script (1-bit DAC verification)")
-    parser.add_argument("-i", "--ip", type=str, help="IP address of the server (optional)", required=False)
+    parser = argparse.ArgumentParser(description="Beamforming control script")
+    parser.add_argument(
+        "-i",
+        "--ip",
+        type=str,
+        help="IP address of the server (optional)",
+        required=False,
+    )
     parser.add_argument("--config-file", type=str)
     parser.add_argument(
         "--tx-phase-file",
@@ -753,28 +781,24 @@ def parse_arguments():
     )
 
     args = parser.parse_args()
+
     logger.info("Invocation args: %s", " ".join(sys.argv))
 
     if args.ip:
         logger.debug(f"Setting server IP to: {args.ip}")
         SERVER_IP = args.ip
-
     return args
 
 
-# =============================================================================
-# main
-# =============================================================================
 def main():
-    global meas_id, file_name_state
+    global meas_id
 
     args = parse_arguments()
 
-    # Load calibration/settings (overrides globals, including DITHER_SIGMA2, TX_SCALE)
     try:
         with open(os.path.join(os.path.dirname(__file__), "cal-settings.yml"), "r") as file:
-            vars = yaml.safe_load(file)
-            globals().update(vars)
+            vars_ = yaml.safe_load(file)
+            globals().update(vars_)
     except FileNotFoundError:
         logger.error("Calibration file 'cal-settings.yml' not found in the current directory.")
         exit()
@@ -785,6 +809,7 @@ def main():
         logger.error(f"Unexpected error while loading calibration settings: {e}")
         exit()
 
+    quit_event = None
     try:
         script_dir = os.path.dirname(os.path.realpath(__file__))
         fpga_path = os.path.join(script_dir, "usrp_b210_fpga_loopback.bin")
@@ -794,13 +819,13 @@ def main():
         )
         logger.info("Using Device: %s", usrp.get_pp_string())
 
-        # Setup
+        # STEP 0: setup + sync
         tx_streamer, rx_streamer = setup(usrp, SERVER_IP, connect=True)
 
         quit_event = threading.Event()
         result_queue = queue.Queue()
 
-        # Pilot 1
+        # STEP 1: Pilot 1
         measure_pilot(
             usrp,
             tx_streamer,
@@ -817,7 +842,7 @@ def main():
             DEG,
         )
 
-        # Pilot 2
+        # STEP 2: Pilot 2
         measure_pilot(
             usrp,
             tx_streamer,
@@ -834,7 +859,7 @@ def main():
             DEG,
         )
 
-        # Loopback
+        # STEP 3: Loopback
         measure_loopback(
             usrp,
             tx_streamer,
@@ -851,7 +876,7 @@ def main():
             DEG,
         )
 
-        # Cable phase correction
+        # STEP 4: Cable phase
         phi_cable = 0
         with open(os.path.join(os.path.dirname(__file__), "ref-RF-cable.yml"), "r") as phases_yaml:
             try:
@@ -862,11 +887,14 @@ def main():
                 else:
                     logger.error("Phase offset not found in ref-RF-cable.yml")
             except yaml.YAMLError as exc:
-                print(exc)
+                logger.error(exc)
 
+        # STEP 5: BF phase from server (or local MRT override)
         phi_BF = get_BF(
-            A_P1, -phi_RP1 + np.deg2rad(phi_cable),
-            A_P2, -phi_RP2 + np.deg2rad(phi_cable),
+            A_P1,
+            -phi_RP1 + np.deg2rad(phi_cable),
+            A_P2,
+            -phi_RP2 + np.deg2rad(phi_cable),
         )
 
         if BEAMFORMER == "MRT":
@@ -878,7 +906,7 @@ def main():
         alive_socket.send_string(f"{HOSTNAME} TX")
         alive_socket.close()
 
-        # Final phase for coherent TX
+        # Final TX phase
         tx_phase = phi_RL - np.deg2rad(phi_cable) + phi_BF
         logger.info(
             "Phase correction: %s (rad) / %s%s",
@@ -887,7 +915,7 @@ def main():
             DEG,
         )
 
-        # TX (1-bit + dither)
+        # STEP 6: Timed coherent TX (TX samples are now: precoded -> dither -> 1-bit -> USRP)
         tx_phase_coh(
             usrp,
             tx_streamer,
@@ -902,7 +930,8 @@ def main():
     except Exception as e:
         logger.debug("Sending signal to stop!")
         logger.error(e)
-        quit_event.set()
+        if quit_event is not None:
+            quit_event.set()
 
     finally:
         time.sleep(1)
