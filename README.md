@@ -137,7 +137,7 @@ python run-clients.py --stop -a
 ```
 
 ```bash
-python record/record-meas-scope.py
+python server/record/record-meas-scope.py
 ```
 
 ```bash
