@@ -148,6 +148,9 @@ python server/record/sync-BF-server.py --num-subscribers 42 --num-pilots 1
 python usrp_pilot.py --pilot 1
 ```
 
+```bash
+python plot_all_folders_heatmap.py --grid-res-lambda 0.1
+```
 
 </details>
 
