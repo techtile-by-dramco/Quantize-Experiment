@@ -92,7 +92,7 @@ class qpsk_demodulator(gr.top_block):
         self.digital_constellation_decoder_cb_0 = digital.constellation_decoder_cb(qpsk_mg.base())
         self.blocks_unpack_k_bits_bb_0 = blocks.unpack_k_bits_bb(2)
         self.blocks_null_sink_0 = blocks.null_sink(gr.sizeof_float*1)
-        self.blocks_file_sink_0 = blocks.file_sink(gr.sizeof_float*1, '/home/user/Quantize-Experiment/client/evm/evm.bin', False)
+        self.blocks_file_sink_0 = blocks.file_sink(gr.sizeof_float*1, '/home/pi/Quantize-Experiment/client/evm/evm.bin', False)
         self.blocks_file_sink_0.set_unbuffered(True)
         self.blocks_char_to_float_0_0 = blocks.char_to_float(1, 1)
 
