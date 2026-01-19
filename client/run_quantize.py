@@ -46,8 +46,8 @@ file_open = False
 # =============================================================================
 #                   1-bit DAC Quantization (with optional dithering)
 # =============================================================================
-ENABLE_1BIT_DAC = False          # True: enable 1-bit quantizer after precoding
-ENABLE_DITHER = False            # True: add dither before 1-bit quantization
+ENABLE_1BIT_DAC = True          # True: enable 1-bit quantizer after precoding
+ENABLE_DITHER = True            # True: add dither before 1-bit quantization
 DITHER_REL_STD = 0.10           # dither std relative to signal RMS amplitude (per sample)
 ONEBIT_POWER_NORM = True        # normalize 1-bit output to match input RMS power
 DITHER_SEED_BASE = 12345        # reproducible base seed
