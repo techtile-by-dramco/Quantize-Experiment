@@ -58,7 +58,7 @@ class qpsk_demodulator(gr.top_block):
         ##################################################
 
         self.uhd_usrp_source_0 = uhd.usrp_source(
-            ",".join(("serial=31DB5AB", "")),
+            ",".join(("serial=31DEAB8", "")),
             uhd.stream_args(
                 cpu_format="fc32",
                 args='',
