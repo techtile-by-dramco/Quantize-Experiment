@@ -137,7 +137,7 @@ python run-clients.py --stop -a
 ```
 
 ```bash
-python record/record-meas-energy-profiler.py
+python record/record-meas-scope.py
 ```
 
 ```bash
