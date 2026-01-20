@@ -128,6 +128,7 @@ def setup_usrp_rx_only(usrp: uhd.usrp.MultiUSRP, channels, logger: logging.Logge
     rx_bw = float(globals().get("RX_BW", 200e3))
 
     for ch in channels:
+        usrp.set_rx_antenna("TX/RX", ch)   # ★ 强制使用 TX/RX 口
         usrp.set_rx_rate(rate, ch)
         usrp.set_rx_gain(rx_gain, ch)
         usrp.set_rx_bandwidth(rx_bw, ch)
