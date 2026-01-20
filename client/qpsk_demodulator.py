@@ -41,7 +41,7 @@ class qpsk_demodulator(gr.top_block):
         eq_gain=0.0001,
         phase_bw=6.28 / 200,
         timing_loop_bw=6.28 / 200,
-        evm_avg_len=200,
+        evm_avg_len=2000,
     ):
         gr.top_block.__init__(self, "qpsk_demodulator", catch_exceptions=True)
 
