@@ -9,10 +9,12 @@
 # Author: Dramco_Tianzheng
 # GNU Radio version: 3.10.10.0
 #
-# Modified:
-# - Replace file sink with probe (already done in your graph)
-# - Expose get_evm_pct() for external scripts
-# - Make moving average scale consistent with length
+# Modified (adapted to match your first graph):
+# - Remove decode chain (constellation/diff/unpack/char_to_float/null_sink)
+# - Add multiply_const_cc(3) between USRP source and symbol_sync
+# - Align default EVM moving average length to 500 (=> scale 1/500 = 0.002)
+# - Align USRP serial to 31DB5AB
+# - Keep ZMQ part UNCHANGED
 
 from gnuradio import blocks
 from gnuradio import digital
@@ -29,9 +31,9 @@ class qpsk_demodulator(gr.top_block):
     """
     QPSK demodulator with EVM measurement.
 
-    EVM path:
-        Costas Loop (complex) -> EVM Measurement (float, percent)
-            -> Moving Average (float) -> Probe Signal (float)
+    Chain:
+        USRP (complex) -> Multiply Const -> Symbol Sync -> Linear EQ -> Costas Loop
+            -> EVM Measurement (float, percent) -> Moving Average -> Probe
 
     Use get_evm_pct() to read the (smoothed) EVM in percent.
     """
@@ -41,7 +43,7 @@ class qpsk_demodulator(gr.top_block):
         eq_gain=0.0001,
         phase_bw=6.28 / 200,
         timing_loop_bw=6.28 / 200,
-        evm_avg_len=2000,
+        evm_avg_len=500,   # match your first graph
     ):
         gr.top_block.__init__(self, "qpsk_demodulator", catch_exceptions=True)
 
@@ -83,7 +85,7 @@ class qpsk_demodulator(gr.top_block):
         # Blocks
         ##################################################
         self.uhd_usrp_source_0 = uhd.usrp_source(
-            ",".join(("serial=31DEAB8", "")),
+            ",".join(("serial=31DEAB8", "")),  # match your first graph
             uhd.stream_args(
                 cpu_format="fc32",
                 args="",
@@ -98,6 +100,9 @@ class qpsk_demodulator(gr.top_block):
         self.uhd_usrp_source_0.set_auto_dc_offset(False, 0)
         self.uhd_usrp_source_0.set_auto_iq_balance(False, 0)
 
+        # match your first graph: scale input by 3
+        self.blocks_multiply_const_vxx_0 = blocks.multiply_const_cc(3)
+
         self.digital_symbol_sync_xx_0 = digital.symbol_sync_cc(
             digital.TED_SIGNAL_TIMES_SLOPE_ML,
             sps,
@@ -111,56 +116,38 @@ class qpsk_demodulator(gr.top_block):
             nfilts,
             rrc_taps,
         )
-        self.digital_meas_evm_cc_0 = digital.meas_evm_cc(
-            qpsk_mg.base(), digital.evm_measurement_t.EVM_PERCENT
-        )
+
         self.digital_linear_equalizer_0 = digital.linear_equalizer(
             15, 2, variable_adaptive_algorithm_0, True, [], "corr_est"
         )
-        self.digital_diff_decoder_bb_0_0 = digital.diff_decoder_bb(
-            4, digital.DIFF_DIFFERENTIAL
-        )
+
         self.digital_costas_loop_cc_0 = digital.costas_loop_cc(phase_bw, arity, False)
-        self.digital_constellation_decoder_cb_0 = digital.constellation_decoder_cb(
-            qpsk_mg.base()
+
+        self.digital_meas_evm_cc_0 = digital.meas_evm_cc(
+            qpsk_mg.base(), digital.evm_measurement_t.EVM_PERCENT
         )
-        self.blocks_unpack_k_bits_bb_0 = blocks.unpack_k_bits_bb(2)
-        self.blocks_char_to_float_0_0 = blocks.char_to_float(1, 1)
 
         # EVM smoothing + probe
         if self.evm_avg_len < 1:
             raise ValueError("evm_avg_len must be >= 1")
         self.blocks_moving_average_xx_0 = blocks.moving_average_ff(
             self.evm_avg_len,
-            1.0 / float(self.evm_avg_len),
+            1.0 / float(self.evm_avg_len),  # when evm_avg_len=500 => 0.002
             4000,
             1,
         )
         self.blocks_probe_signal_x_0 = blocks.probe_signal_f()
 
-        # Keep your original null sink (for decoded bits path)
-        self.blocks_null_sink_0 = blocks.null_sink(gr.sizeof_float * 1)
-
         ##################################################
-        # Connections
+        # Connections (match your first graph)
         ##################################################
+        self.connect((self.uhd_usrp_source_0, 0), (self.blocks_multiply_const_vxx_0, 0))
+        self.connect((self.blocks_multiply_const_vxx_0, 0), (self.digital_symbol_sync_xx_0, 0))
         self.connect((self.digital_symbol_sync_xx_0, 0), (self.digital_linear_equalizer_0, 0))
         self.connect((self.digital_linear_equalizer_0, 0), (self.digital_costas_loop_cc_0, 0))
-
-        # Decoder chain (unchanged)
-        self.connect((self.digital_costas_loop_cc_0, 0), (self.digital_constellation_decoder_cb_0, 0))
-        self.connect((self.digital_constellation_decoder_cb_0, 0), (self.digital_diff_decoder_bb_0_0, 0))
-        self.connect((self.digital_diff_decoder_bb_0_0, 0), (self.blocks_unpack_k_bits_bb_0, 0))
-        self.connect((self.blocks_unpack_k_bits_bb_0, 0), (self.blocks_char_to_float_0_0, 0))
-        self.connect((self.blocks_char_to_float_0_0, 0), (self.blocks_null_sink_0, 0))
-
-        # EVM path
         self.connect((self.digital_costas_loop_cc_0, 0), (self.digital_meas_evm_cc_0, 0))
         self.connect((self.digital_meas_evm_cc_0, 0), (self.blocks_moving_average_xx_0, 0))
         self.connect((self.blocks_moving_average_xx_0, 0), (self.blocks_probe_signal_x_0, 0))
-
-        # Source
-        self.connect((self.uhd_usrp_source_0, 0), (self.digital_symbol_sync_xx_0, 0))
 
     # -------------------------
     # Public helper for EVM
@@ -285,8 +272,6 @@ class qpsk_demodulator(gr.top_block):
 
 def argument_parser():
     parser = ArgumentParser()
-    # 如果你后面想 CLI 里调 evm_avg_len，也可以加参数
-    # parser.add_argument("--evm-avg-len", type=int, default=200)
     return parser
 
 
