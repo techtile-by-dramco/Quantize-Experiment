@@ -52,6 +52,7 @@ halt_on_connectivity_failure: False  # set False if you want to continue with on
 
 experiment_config:
   alpha: 0
+  target_location: [3.33693603515625, 1.752629638671875, 0.27229574584960936]
 
 
 
