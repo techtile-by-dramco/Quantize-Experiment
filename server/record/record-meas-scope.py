@@ -27,7 +27,7 @@ import zmq
 # ****************************************************************************************** #
 
 SAVE_EVERY = 60.0  # seconds
-FOLDER = "1-bit-qpsk-without-norm"  # subfolder inside data/where to save measurement data
+FOLDER = "1-bit-qpsk"  # subfolder inside data/where to save measurement data
 TIMESTAMP = round(time())
 DEFAULT_DURATION = None  # seconds, override via CLI
 
