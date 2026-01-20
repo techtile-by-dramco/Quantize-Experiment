@@ -176,12 +176,17 @@ def capture_to_bin(
     rx_md = uhd.types.RXMetadata()
     recv_buffer = np.zeros((num_channels, max_samps_per_packet), dtype=np.complex64)
 
-    # start streaming immediately
+    # ---- start streaming with time alignment (multi-chan safe) ----
     stream_cmd = uhd.types.StreamCMD(uhd.types.StreamMode.start_cont)
-    stream_cmd.stream_now = True
-    rx_streamer.issue_stream_cmd(stream_cmd)
+    stream_cmd.stream_now = False
 
-    logger.info("Start RX immediately, capturing %.3f s ...", duration)
+    # 让开始时间稍微延后一点（比如 0.10s）
+    start_delay = float(globals().get("RX_START_DELAY_S", 0.10))
+    start_time = usrp.get_time_now().get_real_secs() + start_delay
+    stream_cmd.time_spec = uhd.types.TimeSpec(start_time)
+
+    rx_streamer.issue_stream_cmd(stream_cmd)
+    logger.info("Scheduled RX start at device time %.6f (delay %.3f s)", start_time, start_delay)
     t0 = time.time()
 
     # stats
