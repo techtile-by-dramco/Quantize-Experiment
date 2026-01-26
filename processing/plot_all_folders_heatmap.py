@@ -831,6 +831,97 @@ def print_run_summary(args, target_rect, grid_res):
         f"- cmin/cmax (linear uW plots): {args.cmin}/{args.cmax}\n"
         f"- vmin/vmax (dBm plots): {args.vmin}/{args.vmax}\n"
     )
+def evm_pct_to_achievable_rate_bphz(evm_pct, evm_floor_pct=0.01, snr_cap_db=None):
+    """
+    Convert EVM percent to achievable rate (bits/s/Hz) using:
+      EVM_rms = evm_pct/100
+      SNR_lin ~= 1 / EVM_rms^2
+      R = log2(1 + SNR_lin)
+
+    - evm_floor_pct: avoid inf when EVM is extremely small/0 (default 0.01%).
+    - snr_cap_db: optional cap on SNR in dB (e.g., 50) to avoid huge values dominating colorbar.
+    """
+    evm_pct = np.asarray(evm_pct, dtype=float)
+    rate = np.full_like(evm_pct, np.nan, dtype=float)
+
+    valid = np.isfinite(evm_pct) & (evm_pct > 0)
+    if not np.any(valid):
+        return rate
+
+    evm_clipped = evm_pct.copy()
+    evm_clipped[valid] = np.maximum(evm_clipped[valid], evm_floor_pct)
+
+    evm_rms = evm_clipped / 100.0
+    snr_lin = 1.0 / (evm_rms ** 2)
+
+    if snr_cap_db is not None:
+        snr_cap_lin = 10 ** (float(snr_cap_db) / 10.0)
+        snr_lin = np.minimum(snr_lin, snr_cap_lin)
+
+    rate[valid] = np.log2(1.0 + snr_lin[valid])
+    return rate
+
+
+def plot_rate_heatmap(
+    folder,
+    rate_heatmap,
+    counts,
+    x_edges,
+    y_edges,
+    agg="mean",
+    target_rect=None,
+    show=True,
+    png_name="achievable_rate_heatmap.png",
+):
+    """Plot achievable rate heatmap (bit/s/Hz) + counts heatmap."""
+    agg_label = "Median" if agg == "median" else "Mean"
+
+    fig, ax = plt.subplots()
+    img = ax.imshow(
+        rate_heatmap.T,
+        origin="lower",
+        cmap=CMAP,
+        extent=[x_edges[0], x_edges[-1], y_edges[0], y_edges[-1]],
+    )
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_title(f"{os.path.basename(folder)} | {agg_label.lower()} achievable rate per cell [bit/s/Hz]")
+    ax.set_xlabel("x [m]")
+    ax.set_ylabel("y [m]")
+    cbar = fig.colorbar(img, ax=ax)
+    cbar.ax.set_ylabel(f"{agg_label} achievable rate [bit/s/Hz]")
+    if target_rect:
+        x0, y0, w, h = target_rect
+        ax.add_patch(plt.Rectangle((x0, y0), w, h, fill=False, edgecolor="green", linewidth=2))
+    fig.tight_layout()
+    plt.savefig(os.path.join(folder, png_name))
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    # counts
+    fig2, ax2 = plt.subplots()
+    img2 = ax2.imshow(
+        counts.T,
+        origin="lower",
+        cmap="viridis",
+        extent=[x_edges[0], x_edges[-1], y_edges[0], y_edges[-1]],
+    )
+    ax2.set_aspect("equal", adjustable="box")
+    ax2.set_title(f"{os.path.basename(folder)} | rate samples per cell")
+    ax2.set_xlabel("x [m]")
+    ax2.set_ylabel("y [m]")
+    cbar2 = fig2.colorbar(img2, ax=ax2)
+    cbar2.ax.set_ylabel("Samples per cell")
+    if target_rect:
+        x0, y0, w, h = target_rect
+        ax2.add_patch(plt.Rectangle((x0, y0), w, h, fill=False, edgecolor="green", linewidth=2))
+    fig2.tight_layout()
+    plt.savefig(os.path.join(folder, "achievable_rate_heatmap_counts.png"))
+    if show:
+        plt.show()
+    else:
+        plt.close(fig2)
 
 
 def main():
@@ -977,6 +1068,28 @@ def main():
                     show=not args.save_only,
                     png_name="evm_heatmap.png",
                 )
+
+                # ---- Achievable rate heatmap from EVM heatmap ----
+                rate_heatmap = evm_pct_to_achievable_rate_bphz(
+                    evm_heatmap,
+                    evm_floor_pct=0.01,   # 防止 EVM=0 导致 inf；0.01% 已经很保守
+                    snr_cap_db=60,        # 可选：不想 cap 就改成 None
+                )
+                if args.fill_empty:
+                    rate_heatmap = fill_empty_cells_nearest(rate_heatmap)
+
+                plot_rate_heatmap(
+                    folder_path,
+                    rate_heatmap,
+                    evm_counts,           # counts 跟 EVM 同一套就行
+                    ex_edges,
+                    ey_edges,
+                    agg=args.agg,
+                    target_rect=active_target_rect,
+                    show=not args.save_only,
+                    png_name="achievable_rate_heatmap.png",
+                )
+
             else:
                 print(f"{folder_name}: EVM exists but all invalid after filtering.")
         else:
