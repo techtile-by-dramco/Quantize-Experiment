@@ -230,52 +230,49 @@ with open(output_path, "w") as f:
         if messages_received == 0:
             continue
 
-        # -----------------------------
-        # ZF (phase-only reply)
-        # Interpretation:
-        #   csi_P1s: UE1 channel vector across APs (N,)
-        #   csi_P2s: UE2 channel vector across APs (N,)
-        # Build H: (2 x N), compute W: (N x 2)
-        # -----------------------------
-        h1 = np.asarray(csi_P1s, dtype=np.complex128)  # (N,)
-        h2 = np.asarray(csi_P2s, dtype=np.complex128)  # (N,)
+        # =============================
+        # Dual-user ZF / RZF (complex weights)
+        # =============================
+        h1 = np.asarray(csi_P1s, dtype=np.complex128)  # UE1 channel across APs, (N,)
+        h2 = np.asarray(csi_P2s, dtype=np.complex128)  # UE2 channel across APs, (N,)
 
-        # Basic sanity check
-        if h1.size != h2.size or h1.size != len(identities):
-            print("ERROR: size mismatch: h1=%d h2=%d identities=%d" % (h1.size, h2.size, len(identities)))
+        # Sanity checks
+        N = len(identities)
+        if h1.size != N or h2.size != N:
+            print(f"ERROR: size mismatch: h1={h1.size}, h2={h2.size}, identities={N}")
             continue
 
+        # Build H: (2, N)   rows = users, cols = APs
         H = np.vstack([h1, h2])  # (2, N)
 
-        # Regularized ZF (RZF) for numerical stability
+        # Regularized ZF (RZF) for stability (lambda=0 -> pure ZF)
         lam = 1e-6
-        HHH = H @ H.conj().T  # (2,2)
+        HH = H @ H.conj().T  # (2,2)
+
         try:
-            W = H.conj().T @ np.linalg.inv(HHH + lam * np.eye(2))  # (N,2)
+            W = H.conj().T @ np.linalg.inv(HH + lam * np.eye(2))  # (N,2)
         except np.linalg.LinAlgError as e:
-            print("ERROR: matrix inversion failed:", e)
+            print("ERROR: inversion failed:", e)
             continue
 
-        # Column normalization (optional but recommended)
+        # Optional: normalize each user-stream column (keeps per-stream power consistent)
         W = W / (np.linalg.norm(W, axis=0, keepdims=True) + 1e-12)
 
-        w1 = W[:, 0]  # (N,)
-        w2 = W[:, 1]  # (N,)
+        w_u1 = W[:, 0]  # (N,)
+        w_u2 = W[:, 1]  # (N,)
 
-        # Phase-only weights for each AP and each user
-        phi_u1 = np.angle(w1)  # (N,) radians
-        phi_u2 = np.angle(w2)  # (N,) radians
-
-        # Send replies per AP identity (ROUTER -> DEALER)
+        # Reply: send full complex weights (re/im) so AP can apply amplitude+phase
         for idx, identity in enumerate(identities):
             response = {
-                "phi_BF_u1": float(phi_u1[idx]),
-                "phi_BF_u2": float(phi_u2[idx]),
+                # UE1 weight for this AP
+                "w_u1_re": float(np.real(w_u1[idx])),
+                "w_u1_im": float(np.imag(w_u1[idx])),
+                # UE2 weight for this AP
+                "w_u2_re": float(np.real(w_u2[idx])),
+                "w_u2_im": float(np.imag(w_u2[idx])),
             }
             router_socket.send_multipart([identity, json.dumps(response).encode()])
-
         f.flush()
-
 
         # Wait for all subscribers to send a TX MODE message
         print(f"Waiting for {num_subscribers} subscribers to send a TX Mode ...")
