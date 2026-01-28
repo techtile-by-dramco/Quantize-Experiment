@@ -42,7 +42,9 @@ iq_socket.bind(f"tcp://*:{50001}")
 
 HOSTNAME = socket.gethostname()[4:]
 file_open = False
-
+# === MU-ZF weights from server (per-AP complex) ===
+W_U1 = None  # complex
+W_U2 = None  # complex
 # =============================================================================
 #                   1-bit DAC Quantization (with optional dithering)
 # =============================================================================
@@ -477,10 +479,6 @@ def setup(usrp, SERVER_IP, connect=True):
     logger.info(f"USRP has been tuned and setup. ({usrp.get_time_now().get_real_secs()})")
     return tx_streamer, rx_streamer
 
-
-# =============================================================================
-#                           Thread wrappers
-# =============================================================================
 def rx_thread(usrp, rx_streamer, quit_event, duration, res, start_time=None):
     _rx_thread = threading.Thread(
         target=rx_ref,
@@ -489,6 +487,19 @@ def rx_thread(usrp, rx_streamer, quit_event, duration, res, start_time=None):
     _rx_thread.name = "RX_thread"
     _rx_thread.start()
     return _rx_thread
+
+# =============================================================================
+#                           Thread wrappers
+# =============================================================================
+def tx_thread(usrp, tx_streamer, quit_event, w_u1, w_u2, phase_hw, start_time=None):
+    tx_thr = threading.Thread(
+        target=tx_ref,
+        args=(usrp, tx_streamer, quit_event, w_u1, w_u2, phase_hw, start_time),
+    )
+    tx_thr.name = "TX_thread"
+    tx_thr.start()
+    return tx_thr
+
 
 
 def tx_async_th(tx_streamer, quit_event):
@@ -511,27 +522,26 @@ def delta(usrp, at_time):
 def get_current_time(usrp):
     return usrp.get_time_now().get_real_secs()
 
-
-def tx_thread(usrp, tx_streamer, quit_event, phase=[0, 0], amplitude=[0.8, 0.8], start_time=None):
+def tx_thread_loopback(usrp, tx_streamer, quit_event, phase=[0.0, 0.0], amplitude=[0.0, 0.0], start_time=None):
+    """
+    Loopback-only TX thread: sends a constant complex tone per channel:
+        sample[ch] = amplitude[ch] * exp(1j*phase[ch])
+    phase MUST be in radians.
+    """
     tx_thr = threading.Thread(
-        target=tx_ref,
+        target=tx_ref_tone,
         args=(usrp, tx_streamer, quit_event, phase, amplitude, start_time),
     )
-    tx_thr.name = "TX_thread"
+    tx_thr.name = "TX_LB_thread"
     tx_thr.start()
     return tx_thr
 
 
-# =============================================================================
-#                           TX: tx.bin waveform repeat (complex64)
-# =============================================================================
-def tx_ref(usrp, tx_streamer, quit_event, phase, amplitude, start_time=None):
+def tx_ref_tone(usrp, tx_streamer, quit_event, phase, amplitude, start_time=None):
     """
-    Transmit a continuous waveform loaded from tx.bin (complex64) on all channels,
-    repeating forever until quit_event is set.
-
-    Per channel chain:
-      tx.bin waveform -> (precoding scalar amp/phase) -> (optional dither) -> (optional 1-bit) -> USRP
+    Loopback-only transmitter: constant complex baseband per channel.
+    This matches your single-user single-tone approach (no tx1/tx2 involved).
+    phase is in radians.
     """
     num_channels = tx_streamer.get_num_channels()
     max_samps_per_packet = tx_streamer.get_max_num_samps()
@@ -539,14 +549,65 @@ def tx_ref(usrp, tx_streamer, quit_event, phase, amplitude, start_time=None):
     amplitude = np.asarray(amplitude, dtype=np.float32)
     phase = np.asarray(phase, dtype=np.float32)
 
-    # Precoding scalar per channel (kept, so BF phase logic still works)
-    w = amplitude * np.exp(1j * phase)  # (num_channels,)
+    # Constant complex value per channel
+    sample = (amplitude * np.exp(1j * phase)).astype(np.complex64)
 
-    # Load tx.bin from the same folder as this script
+    # Big buffer with constant samples
+    transmit_buffer = np.ones((num_channels, 1000 * max_samps_per_packet), dtype=np.complex64)
+    for ch in range(num_channels):
+        transmit_buffer[ch, :] *= sample[ch]
+
+    tx_md = uhd.types.TXMetadata()
+    if start_time is not None:
+        tx_md.time_spec = start_time
+    else:
+        tx_md.time_spec = uhd.types.TimeSpec(usrp.get_time_now().get_real_secs() + INIT_DELAY)
+
+    tx_md.has_time_spec = True
+    tx_md.end_of_burst = False
+
+    try:
+        while not quit_event.is_set():
+            tx_streamer.send(transmit_buffer, tx_md)
+            tx_md.has_time_spec = False  # only first burst timed
+    except KeyboardInterrupt:
+        logger.debug("CTRL+C detected — stopping loopback tone TX")
+    finally:
+        tx_md.end_of_burst = True
+        tx_streamer.send(np.zeros((num_channels, 0), dtype=np.complex64), tx_md)
+
+
+# =============================================================================
+#                           TX: tx.bin waveform repeat (complex64)
+# =============================================================================
+def tx_ref(usrp, tx_streamer, quit_event, w_u1, w_u2, phase_hw, start_time=None):
+    """
+    True MU transmit (single-carrier, code-division):
+        x(t) = w_u1 * s1(t) + w_u2 * s2(t)
+    where s1=tx1.bin, s2=tx2.bin (complex64).
+    """
+    num_channels = tx_streamer.get_num_channels()
+    max_samps_per_packet = tx_streamer.get_max_num_samps()
+
+    # We only transmit on LOOPBACK_TX_CH as before (distributed AP single TX chain)
+    # Keep other channels zero.
+    tx_ch = LOOPBACK_TX_CH
+
     script_dir = os.path.dirname(os.path.realpath(__file__))
-    tx_bin_path = os.path.join(script_dir, "tx.bin")
-    base_wave = load_tx_bin_complex64(tx_bin_path)  # 1-D complex64
-    logger.info("Loaded tx.bin as complex64: %s (samples=%d)", tx_bin_path, int(base_wave.size))
+    tx1_path = os.path.join(script_dir, "tx1.bin")
+    tx2_path = os.path.join(script_dir, "tx2.bin")
+
+    s1 = load_tx_bin_complex64(tx1_path)  # 1-D complex64
+    s2 = load_tx_bin_complex64(tx2_path)  # 1-D complex64
+    if s1.size != s2.size:
+        raise ValueError(f"tx1.bin and tx2.bin must have same length: {s1.size} vs {s2.size}")
+
+    L = int(s1.size)
+    logger.info("Loaded MU sequences: tx1.bin=%s tx2.bin=%s (L=%d)", tx1_path, tx2_path, L)
+
+    # Optional: normalize s1,s2 to unit RMS (safe even if already unit power)
+    s1 = (s1 / (np.sqrt(np.mean(np.abs(s1)**2)) + 1e-12)).astype(np.complex64, copy=False)
+    s2 = (s2 / (np.sqrt(np.mean(np.abs(s2)**2)) + 1e-12)).astype(np.complex64, copy=False)
 
     # Reproducible RNG per measurement id
     try:
@@ -570,43 +631,42 @@ def tx_ref(usrp, tx_streamer, quit_event, phase, amplitude, start_time=None):
             if n <= 0:
                 continue
 
-            # take n samples with wrap-around
-            if idx + n <= base_wave.size:
-                chunk = base_wave[idx:idx + n]
+            # slice with wrap-around
+            if idx + n <= L:
+                c1 = s1[idx:idx + n]
+                c2 = s2[idx:idx + n]
                 idx += n
-                if idx >= base_wave.size:
+                if idx >= L:
                     idx = 0
             else:
-                first = base_wave[idx:]
-                remain = n - first.size
-                second = base_wave[:remain]
-                chunk = np.concatenate([first, second])
-                idx = remain
+                first_len = L - idx
+                c1 = np.concatenate([s1[idx:], s1[:(n - first_len)]])
+                c2 = np.concatenate([s2[idx:], s2[:(n - first_len)]])
+                idx = n - first_len
 
-            transmit_buffer = np.empty((num_channels, n), dtype=np.complex64)
+            transmit_buffer = np.zeros((num_channels, n), dtype=np.complex64)
 
-            for ch in range(num_channels):
-                x = (w[ch] * chunk).astype(np.complex64, copy=False)
+            # ---- MU superposition on tx_ch ----
+            hw_rot = np.exp(1j * np.float32(phase_hw)).astype(np.complex64)
+            x = (hw_rot * (w_u1 * c1 + w_u2 * c2)).astype(np.complex64, copy=False)
 
-                if ENABLE_DITHER:
-                    x = add_complex_dither(x, rel_std=DITHER_REL_STD, rng=rng)
+            if ENABLE_DITHER:
+                x = add_complex_dither(x, rel_std=DITHER_REL_STD, rng=rng)
 
-                if ENABLE_1BIT_DAC:
-                    x = one_bit_quantize_complex(x, power_norm=ONEBIT_POWER_NORM)
+            if ENABLE_1BIT_DAC:
+                x = one_bit_quantize_complex(x, power_norm=ONEBIT_POWER_NORM)
 
-                transmit_buffer[ch, :] = x
+            transmit_buffer[tx_ch, :] = x
 
             tx_streamer.send(transmit_buffer, tx_md)
-
-            # safest: only first packet is timed
-            tx_md.has_time_spec = False
+            tx_md.has_time_spec = False  # only first packet timed
 
     except KeyboardInterrupt:
         logger.debug("CTRL+C detected — stopping transmission")
-
     finally:
         tx_md.end_of_burst = True
         tx_streamer.send(np.zeros((num_channels, 0), dtype=np.complex64), tx_md)
+
 
 
 def tx_meta_thread(tx_streamer, quit_event):
@@ -669,12 +729,12 @@ def measure_loopback(usrp, tx_streamer, rx_streamer, quit_event, result_queue, a
     except Exception as e:
         logger.error(e)
 
-    tx_thr = tx_thread(
+    tx_thr = tx_thread_loopback(
         usrp,
         tx_streamer,
         quit_event,
+        phase=[0.0, 0.0], 
         amplitude=amplitudes,
-        phase=[0.0, 0.0],
         start_time=start_time,
     )
 
@@ -706,13 +766,16 @@ def measure_loopback(usrp, tx_streamer, rx_streamer, quit_event, result_queue, a
 #                           BF helper (CSI -> server -> phi_BF)
 # =============================================================================
 def get_BF(ampl_P1, phi_P1, ampl_P2, phi_P2):
+    """
+    Send CSI (2 users) to server and receive MU-ZF weights (w_u1, w_u2) for THIS AP.
+    We also apply per-AP power normalization to avoid clipping:
+        |w_u1|^2 + |w_u2|^2 <= 1
+    """
     import json
 
     dealer_socket = context.socket(zmq.DEALER)
     dealer_socket.setsockopt_string(zmq.IDENTITY, HOSTNAME)
     dealer_socket.connect(f"tcp://{SERVER_IP}:{PILOT_PORT}")
-
-    logger.debug("Sending CSI")
 
     msg = {
         "host": HOSTNAME,
@@ -723,61 +786,57 @@ def get_BF(ampl_P1, phi_P1, ampl_P2, phi_P2):
     }
 
     dealer_socket.send(json.dumps(msg).encode())
-    logger.debug("Message sent, waiting for response...")
 
     poller = zmq.Poller()
     poller.register(dealer_socket, zmq.POLLIN)
     socks = dict(poller.poll(30000))
 
-    phi_BF_eff = None
+    if not (dealer_socket in socks and socks[dealer_socket] == zmq.POLLIN):
+        dealer_socket.close()
+        raise TimeoutError(f"[{HOSTNAME}] No reply from server (pilot weights timed out).")
 
-    if dealer_socket in socks and socks[dealer_socket] == zmq.POLLIN:
-        reply = dealer_socket.recv()
-        response = json.loads(reply.decode())
-        logger.info("[%s] Received: %s", HOSTNAME, response)
-
-        # server returns complex weights for user1/user2
-        w_u1 = complex(float(response["w_u1_re"]), float(response["w_u1_im"]))
-        w_u2 = complex(float(response["w_u2_re"]), float(response["w_u2_im"]))
-
-        # w_eff = w_u1 + w_u2
-        w_eff = w_u1
-        phi_BF_eff = float(np.angle(w_eff))  # radians
-
-        logger.debug("w_u1=%s w_u2=%s w_eff=%s phi_BF_eff=%.6f rad",
-                     w_u1, w_u2, w_eff, phi_BF_eff)
-
-    else:
-        logger.warning("[%s] No reply from server, timed out.", HOSTNAME)
-
+    reply = dealer_socket.recv()
+    response = json.loads(reply.decode())
     dealer_socket.close()
-    return phi_BF_eff
+
+    w_u1 = complex(float(response["w_u1_re"]), float(response["w_u1_im"]))
+    w_u2 = complex(float(response["w_u2_re"]), float(response["w_u2_im"]))
+
+    # ---- per-AP power normalization (important!) ----
+    # This ensures the combined transmit power (before global TX gain) is bounded.
+    p = (abs(w_u1) ** 2 + abs(w_u2) ** 2)
+    if p > 1e-12:
+        scale = 1.0 / np.sqrt(max(p, 1e-12))
+        w_u1 *= scale
+        w_u2 *= scale
+
+    logger.info("[%s] MU-ZF weights: w_u1=%s w_u2=%s |w|^2=%.3f",
+                HOSTNAME, w_u1, w_u2, (abs(w_u1)**2 + abs(w_u2)**2))
+
+    return w_u1, w_u2
 
 
 
-def tx_phase_coh(usrp, tx_streamer, quit_event, phase_corr, at_time, long_time=True):
-    logger.debug("########### TX with adjusted phases ###########")
-
-    phases = [0.0, 0.0]
-    amplitudes = [0.0, 0.0]
-
-    phases[LOOPBACK_TX_CH] = phase_corr
-    amplitudes[LOOPBACK_TX_CH] = 0.8
-
-    logger.debug(f"Phases: {phases}")
-    logger.debug(f"amplitudes: {amplitudes}")
-    logger.debug(f"TX Gain: {FREE_TX_GAIN}")
+def tx_phase_coh(usrp, tx_streamer, quit_event, w_u1: complex, w_u2: complex, phase_hw: float, at_time, long_time=True):
+    """
+    MU-ZF TX with hardware/common phase compensation:
+        x(t) = exp(j*phase_hw) * (w_u1*s1(t) + w_u2*s2(t))
+    phase_hw accounts for loopback + cable correction.
+    """
+    logger.debug("########### MU-ZF TX (tx1+tx2) + HW phase corr ###########")
 
     usrp.set_tx_gain(FREE_TX_GAIN, LOOPBACK_TX_CH)
 
     start_time = uhd.types.TimeSpec(at_time)
 
+    # IMPORTANT: pass phase_hw down to tx_ref via tx_thread
     tx_thr = tx_thread(
         usrp,
         tx_streamer,
         quit_event,
-        amplitude=amplitudes,
-        phase=phases,
+        w_u1=w_u1,
+        w_u2=w_u2,
+        phase_hw=phase_hw,
         start_time=start_time,
     )
 
@@ -794,9 +853,10 @@ def tx_phase_coh(usrp, tx_streamer, quit_event, phase_corr, at_time, long_time=T
     tx_thr.join()
     tx_meta_thr.join()
 
-    logger.debug("Transmission completed successfully")
+    logger.debug("MU-ZF transmission completed successfully")
     quit_event.clear()
     return tx_thr, tx_meta_thr
+
 
 
 # =============================================================================
@@ -930,43 +990,41 @@ def main():
             except yaml.YAMLError as exc:
                 logger.error(exc)
 
-        # STEP 5: BF phase from server (or local MRT override)
-        phi_BF = get_BF(
+        # STEP 5: Get MU-ZF weights (two columns) from server for this AP
+        w_u1, w_u2 = get_BF(
             A_P1,
             -phi_RP1 + np.deg2rad(phi_cable),
             A_P2,
             -phi_RP2 + np.deg2rad(phi_cable),
         )
 
-        # if BEAMFORMER == "MRT":
-        #     phi_BF = phi_RP2 - np.deg2rad(phi_cable)
-
+        # Inform server TX mode (unchanged)
         alive_socket = context.socket(zmq.REQ)
         alive_socket.connect(f"tcp://{SERVER_IP}:{5558}")
         logger.debug("Sending TX MODE")
         alive_socket.send_string(f"{HOSTNAME} TX")
         alive_socket.close()
 
-        # Final TX phase
-        tx_phase = phi_RL - np.deg2rad(phi_cable) + phi_BF
+        # Hardware/common phase compensation ONLY (keep your original intention)
+        phase_hw = float(phi_RL - np.deg2rad(phi_cable))
         logger.info(
-            "Phase correction: %s (rad) / %s%s",
-            fmt(tx_phase),
-            fmt(np.rad2deg(tx_phase)),
+            "HW phase compensation: %s (rad) / %s%s",
+            fmt(phase_hw),
+            fmt(np.rad2deg(phase_hw)),
             DEG,
         )
 
-        # STEP 6: Timed coherent TX
-        # Now TX samples are: tx.bin waveform -> (amp/phase) -> (optional dither) -> (optional 1-bit) -> USRP
+        # STEP 6: Timed MU-ZF TX: x = exp(j*phase_hw) * (w_u1*tx1 + w_u2*tx2)
         tx_phase_coh(
             usrp,
             tx_streamer,
             quit_event,
-            phase_corr=tx_phase,
+            w_u1=w_u1,
+            w_u2=w_u2,
+            phase_hw=phase_hw,
             at_time=START_TX,
             long_time=True,
         )
-
         print("DONE")
 
     except Exception as e:
