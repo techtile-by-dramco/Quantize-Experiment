@@ -95,7 +95,7 @@ def main():
     AP_IP = os.environ.get("AP_IP", "192.168.1.10")   # 改成你的 AP IP
     AP_PORT = int(os.environ.get("AP_PORT", "50001"))
 
-    USER_ID = int(os.environ.get("USER_ID", "1"))     # UE1=1, UE2=2
+    USER_ID = int(os.environ.get("USER_ID", "2"))     # UE1=1, UE2=2
 
     TX1 = os.environ.get("TX1_PATH", "./tx1.bin")
     TX2 = os.environ.get("TX2_PATH", "./tx2.bin")
