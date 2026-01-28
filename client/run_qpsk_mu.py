@@ -740,7 +740,8 @@ def get_BF(ampl_P1, phi_P1, ampl_P2, phi_P2):
         w_u1 = complex(float(response["w_u1_re"]), float(response["w_u1_im"]))
         w_u2 = complex(float(response["w_u2_re"]), float(response["w_u2_im"]))
 
-        w_eff = w_u1 + w_u2
+        # w_eff = w_u1 + w_u2
+        w_eff = w_u1
         phi_BF_eff = float(np.angle(w_eff))  # radians
 
         logger.debug("w_u1=%s w_u2=%s w_eff=%s phi_BF_eff=%.6f rad",
