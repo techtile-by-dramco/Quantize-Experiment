@@ -152,6 +152,12 @@ python usrp_pilot.py --pilot 1
 python plot_all_folders_heatmap.py --grid-res-lambda 0.1
 ```
 
+```bash
+python3 client/run-ref.py --args "type=b200" \
+  --freq 920e6 --rate 250e3 --duration 1E6 --channels 0 \
+  --wave-ampl 0.8 --gain 73 -w sine --wave-freq 0
+```
+
 </details>
 
 ---
