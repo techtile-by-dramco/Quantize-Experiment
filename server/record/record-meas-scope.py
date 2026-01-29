@@ -34,10 +34,9 @@ DEFAULT_DURATION = None  # seconds, override via CLI
 # ---------------------------
 # EVM stream from client (ZMQ)
 # ---------------------------
-# Change this to your client IP (the machine running the demodulator PUB socket)
 CLIENT_EVM_ADDR = "tcp://rpi-t03.local:52001"
 
-# If no EVM packet received within this many seconds, record NaN
+# If no packet received within this many seconds, record NaN / None
 EVM_STALE_SEC = 2.0
 
 # -------------------------------------------------
@@ -85,7 +84,7 @@ parser.add_argument(
     dest="evm_addr",
     type=str,
     default=CLIENT_EVM_ADDR,
-    help="ZMQ address of client EVM publisher, e.g. tcp://192.168.0.10:50001",
+    help="ZMQ address of client publisher, e.g. tcp://192.168.0.10:52001",
 )
 args = parser.parse_args()
 
@@ -110,7 +109,6 @@ positioner = PositionerClient(config=settings["positioning"], backend="zmq")
 scope = Scope(config=settings["scope"])
 
 import logging  # noqa: E402
-
 scope.logger.setLevel(logging.ERROR)
 
 plt = TechtilePlotter(realtime=True)
@@ -118,23 +116,32 @@ plt = TechtilePlotter(realtime=True)
 positions = []
 values = []
 bd_power = []
-evm = []  # EVM percent per sample
+evm = []  # EVM percent per sample (legacy behavior)
+
+# NEW: store client-side RX metrics (SINR/leakage/etc.) aligned with positions
+rx_metrics = []  # list of dict or None
 
 # NOTE: keep original behavior if you want immediate save on start.
-# If you prefer not to save immediately, change to: last_save = time()
 last_save = 0
 stop_requested = False
 
 # ---------------------------
-# EVM receiver state (thread)
+# Client receiver state (thread)
 # ---------------------------
 latest_evm = float("nan")
 latest_evm_t = 0.0  # local receive time (server clock)
 
+# NEW: latest metrics payload from client
+latest_metrics = None  # dict or None
 
-def _evm_subscriber(evm_addr: str):
-    """Background thread: receive EVM from client and keep only the latest value."""
-    global latest_evm, latest_evm_t
+
+def _client_subscriber(evm_addr: str):
+    """
+    Background thread: receive packets from client and keep only the latest values.
+    Expected JSON like:
+      {"t": ..., "evm_pct": ..., "metrics": {...}}
+    """
+    global latest_evm, latest_evm_t, latest_metrics
     ctx = zmq.Context.instance()
     sub = ctx.socket(zmq.SUB)
     sub.connect(evm_addr)
@@ -144,15 +151,21 @@ def _evm_subscriber(evm_addr: str):
         try:
             s = sub.recv_string()
             d = json.loads(s)
+
+            # legacy field
             latest_evm = float(d.get("evm_pct", float("nan")))
+
+            # NEW: metrics dict (SINR/leakage/etc.)
+            m = d.get("metrics", None)
+            latest_metrics = m if isinstance(m, dict) else None
+
             latest_evm_t = time()  # time of reception on server
         except Exception:
-            # keep thread alive on malformed packets / transient network issues
             continue
 
 
-# Start EVM subscriber thread immediately
-threading.Thread(target=_evm_subscriber, args=(args.evm_addr,), daemon=True).start()
+# Start subscriber thread immediately
+threading.Thread(target=_client_subscriber, args=(args.evm_addr,), daemon=True).start()
 
 
 def _get_latest_evm_or_nan() -> float:
@@ -164,6 +177,17 @@ def _get_latest_evm_or_nan() -> float:
     return float(latest_evm)
 
 
+# NEW: metrics getter
+def _get_latest_metrics_or_none():
+    """Return latest metrics dict if fresh, else None."""
+    if latest_evm_t <= 0:
+        return None
+    if (time() - latest_evm_t) > EVM_STALE_SEC:
+        return None
+    # Return a shallow copy to avoid mutation issues
+    return dict(latest_metrics) if isinstance(latest_metrics, dict) else None
+
+
 def save_data():
     """Safely save measurement data to disk."""
     print("Saving data...")
@@ -171,6 +195,7 @@ def save_data():
     values_snapshot = list(values)
     bd_power_snapshot = list(bd_power)
     evm_snapshot = list(evm)
+    rx_metrics_snapshot = list(rx_metrics)  # NEW
 
     if len(positions_snapshot) != len(values_snapshot):
         print(
@@ -186,15 +211,30 @@ def save_data():
             len(positions_snapshot),
         )
 
+    # NEW: keep metrics aligned too
+    if len(rx_metrics_snapshot) != len(positions_snapshot):
+        print(
+            "Warning: rx_metrics and positions length mismatch:",
+            len(rx_metrics_snapshot),
+            len(positions_snapshot),
+        )
+
     positions_path = os.path.join(save_dir, f"{TIMESTAMP}_positions.npy")
     values_path = os.path.join(save_dir, f"{TIMESTAMP}_values.npy")
     bd_power_path = os.path.join(save_dir, f"{TIMESTAMP}_bd_power.npy")
     evm_path = os.path.join(save_dir, f"{TIMESTAMP}_evm.npy")
 
+    # NEW: extra file for metrics
+    rx_metrics_path = os.path.join(save_dir, f"{TIMESTAMP}_rx_metrics.npy")
+
     _atomic_save_npy(positions_path, positions_snapshot)
     _atomic_save_npy(values_path, values_snapshot)
     _atomic_save_npy(bd_power_path, bd_power_snapshot)
     _atomic_save_npy(evm_path, evm_snapshot)
+
+    # NEW: save rx_metrics
+    _atomic_save_npy(rx_metrics_path, rx_metrics_snapshot)
+
     print("Data saved.")
 
 
@@ -203,7 +243,7 @@ def _atomic_save_npy(final_path, data):
     tmp_path = f"{final_path}.tmp"
     try:
         with open(tmp_path, "wb") as f:
-            np.save(f, data)
+            np.save(f, data, allow_pickle=True)  # allow dict/None
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp_path, final_path)
@@ -257,10 +297,14 @@ def _load_existing_data():
 
     total = 0
     loaded_evm_total = 0
+    loaded_metrics_total = 0
 
     for pos_path, val_path in pairs:
         base = os.path.basename(pos_path)[: -len("_positions.npy")]
         evm_path = os.path.join(save_dir, f"{base}_evm.npy")
+
+        # NEW: optional metrics snapshot
+        rx_metrics_path = os.path.join(save_dir, f"{base}_rx_metrics.npy")
 
         try:
             existing_positions = np.load(pos_path, allow_pickle=True).tolist()
@@ -276,6 +320,14 @@ def _load_existing_data():
             except Exception as exc:
                 print(f"Failed to load existing evm snapshot {evm_path}: {exc}")
                 existing_evm = None
+
+        existing_rx_metrics = None
+        if os.path.exists(rx_metrics_path):
+            try:
+                existing_rx_metrics = np.load(rx_metrics_path, allow_pickle=True).tolist()
+            except Exception as exc:
+                print(f"Failed to load existing rx_metrics snapshot {rx_metrics_path}: {exc}")
+                existing_rx_metrics = None
 
         if len(existing_positions) != len(existing_values):
             print(
@@ -309,15 +361,38 @@ def _load_existing_data():
                     existing_evm = existing_evm + [float("nan")] * (
                         len(existing_positions) - len(existing_evm)
                     )
-
             evm.extend(existing_evm)
             loaded_evm_total += len(existing_evm)
+
+        # NEW: rx_metrics: load if present; else fill None to keep aligned
+        if existing_rx_metrics is None:
+            rx_metrics.extend([None] * len(existing_positions))
+        else:
+            if len(existing_rx_metrics) != len(existing_positions):
+                print(
+                    "Warning: existing rx_metrics and positions length mismatch:",
+                    len(existing_rx_metrics),
+                    len(existing_positions),
+                )
+                if len(existing_rx_metrics) > len(existing_positions):
+                    existing_rx_metrics = existing_rx_metrics[: len(existing_positions)]
+                else:
+                    existing_rx_metrics = existing_rx_metrics + [None] * (
+                        len(existing_positions) - len(existing_rx_metrics)
+                    )
+            rx_metrics.extend(existing_rx_metrics)
+            loaded_metrics_total += len(existing_rx_metrics)
 
     print(f"Loaded {total} existing samples from {save_dir}.")
     if loaded_evm_total > 0:
         print(f"Loaded EVM for {loaded_evm_total} samples.")
     else:
         print("No existing EVM snapshots found; filled with NaN.")
+
+    if loaded_metrics_total > 0:
+        print(f"Loaded RX metrics for {loaded_metrics_total} samples.")
+    else:
+        print("No existing RX metrics snapshots found; filled with None.")
 
 
 # ****************************************************************************************** #
@@ -330,7 +405,7 @@ class scope_data(object):
 
 try:
     print("Starting positioner and RFEP...")
-    print(f"Subscribing EVM from: {args.evm_addr}")
+    print(f"Subscribing client stream from: {args.evm_addr}")
     positioner.start()
 
     if args.load_existing:
@@ -350,8 +425,11 @@ try:
             values.append(d1)
             bd_power.append(vals[1])
 
-            # NEW: append EVM (percent) received from client (latest value)
+            # legacy: append EVM (percent) received from client
             evm.append(_get_latest_evm_or_nan())
+
+            # NEW: append metrics dict (or None if stale)
+            rx_metrics.append(_get_latest_metrics_or_none())
 
             plt.measurements_rt(pos.x, pos.y, pos.z, d1.pwr_pw / 1e6)
             print("x", end="", flush=True)
@@ -380,9 +458,6 @@ except Exception as e:
     raise
 
 finally:
-    # ****************************************************************************************** #
-    #                                           CLEANUP                                          #
-    # ****************************************************************************************** #
     print("Cleaning up...")
 
     _save_data_safe()
