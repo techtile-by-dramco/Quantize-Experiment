@@ -326,6 +326,7 @@ with open(output_path, "w") as f:
             print("ERROR: compute_rzf_weights_from_conj_channels failed:", e)
             continue
 
+        W[:, 1] = 0.0
         w_u1 = W[:, 0]
         w_u2 = W[:, 1]
         P1 = float(np.sum(np.abs(w_u1)**2))
