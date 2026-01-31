@@ -43,11 +43,11 @@ class qpsk_demodulator(gr.top_block):
         # Variables
         ##################################################
         self.d = d = 1/(2**(1/2))
-        self.sps = sps = 18
+        self.sps = sps = 16
         self.qpsk_mg = qpsk_mg = digital.constellation_rect([d+d*1j, -d+d*1j,-d-d*1j, d-d*1j], [0, 1, 3, 2],
         4, 2, 2, 1, 1).base()
         self.nfilts = nfilts = 32
-        self.excess_bw = excess_bw = 0.35
+        self.excess_bw = excess_bw = 0.28
         self.variable_adaptive_algorithm_0 = variable_adaptive_algorithm_0 = digital.adaptive_algorithm_cma( qpsk_mg, eq_gain, 1).base()
         self.samp_rate = samp_rate = 250000
         self.rrc_taps = rrc_taps = firdes.root_raised_cosine(nfilts, nfilts, 1.0/float(sps), excess_bw, 11*sps*nfilts)

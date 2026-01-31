@@ -21,7 +21,7 @@ import json
 
 import numpy as np
 import zmq
-
+import socket
 # ****************************************************************************************** #
 #                                           CONFIG                                           #
 # ****************************************************************************************** #
@@ -107,6 +107,30 @@ def _parse_duration(value: Optional[str]) -> Optional[float]:
 max_duration = _parse_duration(args.duration) or DEFAULT_DURATION
 positioner = PositionerClient(config=settings["positioning"], backend="zmq")
 scope = Scope(config=settings["scope"])
+
+# ---------------------------
+# Force Channel Power BW (CPWIDTH) after Scope init
+# ---------------------------
+CPWIDTH_HZ = 10000  # 10 kHz you want
+SCOPE_IP = settings["scope"]["ip"]
+SCOPE_PORT = 4000   # from your MSO64B web page: TCPIP::...::4000::SOCKET
+
+def _scpi_send(cmd: str):
+    # Simple one-shot SCPI sender over raw TCP socket
+    with socket.create_connection((SCOPE_IP, SCOPE_PORT), timeout=2.0) as s:
+        s.sendall((cmd + "\n").encode("ascii", errors="ignore"))
+
+def force_cpower_bw():
+    # Apply to MEAS1 and MEAS2 (your script uses both)
+    _scpi_send(f"MEASUREMENT:MEAS1:CPWIDTh {CPWIDTH_HZ}")
+    _scpi_send(f"MEASUREMENT:MEAS2:CPWIDTh {CPWIDTH_HZ}")
+
+# Apply once right after Scope constructor (which does *RST + sets 5k)
+try:
+    force_cpower_bw()
+    print(f"[SCPI] Forced CPOWER CPWIDTH to {CPWIDTH_HZ} Hz")
+except Exception as e:
+    print(f"[SCPI] Failed to force CPWIDTH: {e}")
 
 import logging  # noqa: E402
 scope.logger.setLevel(logging.ERROR)
