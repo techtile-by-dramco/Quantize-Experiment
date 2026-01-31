@@ -8,43 +8,28 @@
 # Title: qpsk_demodulator
 # Author: Dramco_Tianzheng
 # GNU Radio version: 3.10.10.0
-#
-# Modified (adapted to match your first graph):
-# - Remove decode chain (constellation/diff/unpack/char_to_float/null_sink)
-# - Add multiply_const_cc(3) between USRP source and symbol_sync
-# - Align default EVM moving average length to 500 (=> scale 1/500 = 0.002)
-# - Align USRP serial to 31DB5AB
-# - Keep ZMQ part UNCHANGED
 
+from gnuradio import analog
 from gnuradio import blocks
 from gnuradio import digital
+from gnuradio import filter
 from gnuradio import gr
 from gnuradio.filter import firdes
-from gnuradio import uhd
-
+from gnuradio.fft import window
 import sys
 import signal
 from argparse import ArgumentParser
+from gnuradio.eng_arg import eng_float, intx
+from gnuradio import eng_notation
+from gnuradio import uhd
+import time
+
+
 
 
 class qpsk_demodulator(gr.top_block):
-    """
-    QPSK demodulator with EVM measurement.
 
-    Chain:
-        USRP (complex) -> Multiply Const -> Symbol Sync -> Linear EQ -> Costas Loop
-            -> EVM Measurement (float, percent) -> Moving Average -> Probe
-
-    Use get_evm_pct() to read the (smoothed) EVM in percent.
-    """
-
-    def __init__(
-        self,
-        eq_gain=0.0001,
-        phase_bw=6.28 / 200,
-        timing_loop_bw=6.28 / 200,
-        evm_avg_len=500,   # match your first graph
-    ):
+    def __init__(self, eq_gain=0.0001, phase_bw=6.28/200, timing_loop_bw=6.28/200):
         gr.top_block.__init__(self, "qpsk_demodulator", catch_exceptions=True)
 
         ##################################################
@@ -53,56 +38,42 @@ class qpsk_demodulator(gr.top_block):
         self.eq_gain = eq_gain
         self.phase_bw = phase_bw
         self.timing_loop_bw = timing_loop_bw
-        self.evm_avg_len = int(evm_avg_len)
 
         ##################################################
         # Variables
         ##################################################
-        self.d = d = 1 / (2 ** (1 / 2))
+        self.d = d = 1/(2**(1/2))
         self.sps = sps = 4
-        self.qpsk_mg = qpsk_mg = digital.constellation_rect(
-            [d + d * 1j, -d + d * 1j, -d - d * 1j, d - d * 1j],
-            [0, 1, 3, 2],
-            4,
-            2,
-            2,
-            1,
-            1,
-        ).base()
+        self.qpsk_mg = qpsk_mg = digital.constellation_rect([d+d*1j, -d+d*1j,-d-d*1j, d-d*1j], [0, 1, 3, 2],
+        4, 2, 2, 1, 1).base()
         self.nfilts = nfilts = 32
         self.excess_bw = excess_bw = 0.35
-        self.variable_adaptive_algorithm_0 = variable_adaptive_algorithm_0 = (
-            digital.adaptive_algorithm_cma(qpsk_mg, eq_gain, 1).base()
-        )
+        self.variable_adaptive_algorithm_0 = variable_adaptive_algorithm_0 = digital.adaptive_algorithm_cma( qpsk_mg, eq_gain, 1).base()
         self.samp_rate = samp_rate = 250000
-        self.rrc_taps = rrc_taps = firdes.root_raised_cosine(
-            nfilts, nfilts, 1.0 / float(sps), excess_bw, 11 * sps * nfilts
-        )
+        self.rrc_taps = rrc_taps = firdes.root_raised_cosine(nfilts, nfilts, 1.0/float(sps), excess_bw, 11*sps*nfilts)
         self.freq = freq = 920e6
         self.arity = arity = 4
 
         ##################################################
         # Blocks
         ##################################################
+
         self.uhd_usrp_source_0 = uhd.usrp_source(
-            ",".join(("serial=31DEAB8", "")),  # match your first graph
+            ",".join(("serial=31DEAB8", "")),
             uhd.stream_args(
                 cpu_format="fc32",
-                args="",
-                channels=list(range(0, 1)),
+                args='',
+                channels=list(range(0,1)),
             ),
         )
         self.uhd_usrp_source_0.set_samp_rate(samp_rate)
         # No synchronization enforced.
+
         self.uhd_usrp_source_0.set_center_freq(freq, 0)
-        self.uhd_usrp_source_0.set_antenna("TX/RX", 0)
+        self.uhd_usrp_source_0.set_antenna('TX/RX', 0)
         self.uhd_usrp_source_0.set_gain(40, 0)
         self.uhd_usrp_source_0.set_auto_dc_offset(False, 0)
         self.uhd_usrp_source_0.set_auto_iq_balance(False, 0)
-
-        # match your first graph: scale input by 3
-        self.blocks_multiply_const_vxx_0 = blocks.multiply_const_cc(3)
-
         self.digital_symbol_sync_xx_0 = digital.symbol_sync_cc(
             digital.TED_SIGNAL_TIMES_SLOPE_ML,
             sps,
@@ -114,51 +85,27 @@ class qpsk_demodulator(gr.top_block):
             digital.constellation_bpsk().base(),
             digital.IR_PFB_MF,
             nfilts,
-            rrc_taps,
-        )
-
-        self.digital_linear_equalizer_0 = digital.linear_equalizer(
-            15, 2, variable_adaptive_algorithm_0, True, [], "corr_est"
-        )
-
+            rrc_taps)
+        self.digital_meas_evm_cc_0 = digital.meas_evm_cc(qpsk_mg.base(),digital.evm_measurement_t.EVM_PERCENT)
+        self.digital_linear_equalizer_0 = digital.linear_equalizer(15, 2, variable_adaptive_algorithm_0, True, [ ], 'corr_est')
         self.digital_costas_loop_cc_0 = digital.costas_loop_cc(phase_bw, arity, False)
-
-        self.digital_meas_evm_cc_0 = digital.meas_evm_cc(
-            qpsk_mg.base(), digital.evm_measurement_t.EVM_PERCENT
-        )
-
-        # EVM smoothing + probe
-        if self.evm_avg_len < 1:
-            raise ValueError("evm_avg_len must be >= 1")
-        self.blocks_moving_average_xx_0 = blocks.moving_average_ff(
-            self.evm_avg_len,
-            1.0 / float(self.evm_avg_len),  # when evm_avg_len=500 => 0.002
-            4000,
-            1,
-        )
         self.blocks_probe_signal_x_0 = blocks.probe_signal_f()
+        self.blocks_moving_average_xx_0 = blocks.moving_average_ff(500, 0.002, 4000, 1)
+        self.analog_agc_xx_0 = analog.agc_cc((1e-4), 1.0, 1.0, 65536)
+
 
         ##################################################
-        # Connections (match your first graph)
+        # Connections
         ##################################################
-        self.connect((self.uhd_usrp_source_0, 0), (self.blocks_multiply_const_vxx_0, 0))
-        self.connect((self.blocks_multiply_const_vxx_0, 0), (self.digital_symbol_sync_xx_0, 0))
-        self.connect((self.digital_symbol_sync_xx_0, 0), (self.digital_linear_equalizer_0, 0))
-        self.connect((self.digital_linear_equalizer_0, 0), (self.digital_costas_loop_cc_0, 0))
-        self.connect((self.digital_costas_loop_cc_0, 0), (self.digital_meas_evm_cc_0, 0))
-        self.connect((self.digital_meas_evm_cc_0, 0), (self.blocks_moving_average_xx_0, 0))
+        self.connect((self.analog_agc_xx_0, 0), (self.digital_symbol_sync_xx_0, 0))
         self.connect((self.blocks_moving_average_xx_0, 0), (self.blocks_probe_signal_x_0, 0))
+        self.connect((self.digital_costas_loop_cc_0, 0), (self.digital_meas_evm_cc_0, 0))
+        self.connect((self.digital_linear_equalizer_0, 0), (self.digital_costas_loop_cc_0, 0))
+        self.connect((self.digital_meas_evm_cc_0, 0), (self.blocks_moving_average_xx_0, 0))
+        self.connect((self.digital_symbol_sync_xx_0, 0), (self.digital_linear_equalizer_0, 0))
+        self.connect((self.uhd_usrp_source_0, 0), (self.analog_agc_xx_0, 0))
 
-    # -------------------------
-    # Public helper for EVM
-    # -------------------------
-    def get_evm_pct(self) -> float:
-        """Return current (smoothed) EVM in percent."""
-        return float(self.blocks_probe_signal_x_0.level())
 
-    # -------------------------
-    # Auto-generated getters/setters (kept)
-    # -------------------------
     def get_eq_gain(self):
         return self.eq_gain
 
@@ -190,15 +137,7 @@ class qpsk_demodulator(gr.top_block):
 
     def set_sps(self, sps):
         self.sps = sps
-        self.set_rrc_taps(
-            firdes.root_raised_cosine(
-                self.nfilts,
-                self.nfilts,
-                1.0 / float(self.sps),
-                self.excess_bw,
-                11 * self.sps * self.nfilts,
-            )
-        )
+        self.set_rrc_taps(firdes.root_raised_cosine(self.nfilts, self.nfilts, 1.0/float(self.sps), self.excess_bw, 11*self.sps*self.nfilts))
         self.digital_symbol_sync_xx_0.set_sps(self.sps)
 
     def get_qpsk_mg(self):
@@ -212,30 +151,14 @@ class qpsk_demodulator(gr.top_block):
 
     def set_nfilts(self, nfilts):
         self.nfilts = nfilts
-        self.set_rrc_taps(
-            firdes.root_raised_cosine(
-                self.nfilts,
-                self.nfilts,
-                1.0 / float(self.sps),
-                self.excess_bw,
-                11 * self.sps * self.nfilts,
-            )
-        )
+        self.set_rrc_taps(firdes.root_raised_cosine(self.nfilts, self.nfilts, 1.0/float(self.sps), self.excess_bw, 11*self.sps*self.nfilts))
 
     def get_excess_bw(self):
         return self.excess_bw
 
     def set_excess_bw(self, excess_bw):
         self.excess_bw = excess_bw
-        self.set_rrc_taps(
-            firdes.root_raised_cosine(
-                self.nfilts,
-                self.nfilts,
-                1.0 / float(self.sps),
-                self.excess_bw,
-                11 * self.sps * self.nfilts,
-            )
-        )
+        self.set_rrc_taps(firdes.root_raised_cosine(self.nfilts, self.nfilts, 1.0/float(self.sps), self.excess_bw, 11*self.sps*self.nfilts))
 
     def get_variable_adaptive_algorithm_0(self):
         return self.variable_adaptive_algorithm_0
@@ -273,7 +196,6 @@ class qpsk_demodulator(gr.top_block):
 def argument_parser():
     parser = ArgumentParser()
     return parser
-
 
 def main(top_block_cls=qpsk_demodulator, options=None):
     if options is None:
