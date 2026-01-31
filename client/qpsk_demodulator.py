@@ -43,7 +43,7 @@ class qpsk_demodulator(gr.top_block):
         # Variables
         ##################################################
         self.d = d = 1/(2**(1/2))
-        self.sps = sps = 4
+        self.sps = sps = 18
         self.qpsk_mg = qpsk_mg = digital.constellation_rect([d+d*1j, -d+d*1j,-d-d*1j, d-d*1j], [0, 1, 3, 2],
         4, 2, 2, 1, 1).base()
         self.nfilts = nfilts = 32
