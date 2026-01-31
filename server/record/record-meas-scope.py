@@ -111,7 +111,7 @@ scope = Scope(config=settings["scope"])
 # ---------------------------
 # Force Channel Power BW (CPWIDTH) after Scope init
 # ---------------------------
-CPWIDTH_HZ = 10000  # 10 kHz you want
+CPWIDTH_HZ = 20000  # 20 kHz you want
 SCOPE_IP = settings["scope"]["ip"]
 SCOPE_PORT = 4000   # from your MSO64B web page: TCPIP::...::4000::SOCKET
 
