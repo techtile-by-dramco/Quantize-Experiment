@@ -208,8 +208,10 @@ with open(output_path, "w") as f:
 
                 identities.append(identity)
                 hostnames.append(hostname)
-                csi_P1s.append(ampl_P1 * np.exp(1j * phi_P1))
-                csi_P2s.append(ampl_P2 * np.exp(1j * phi_P2))
+                # csi_P1s.append(ampl_P1 * np.exp(1j * phi_P1))
+                # csi_P2s.append(ampl_P2 * np.exp(1j * phi_P2))
+                csi_P1s.append(np.exp(1j * phi_P1))
+                csi_P2s.append(np.exp(1j * phi_P2))
 
                 messages_received += 1
                 print(
@@ -256,8 +258,8 @@ with open(output_path, "w") as f:
             continue
 
         # Optional: normalize each user-stream column (keeps per-stream power consistent)
-        W = W / (np.linalg.norm(W, axis=0, keepdims=True) + 1e-12)
-
+        # W = W / (np.linalg.norm(W, axis=0, keepdims=True) + 1e-12)
+        W = np.exp(1j * np.angle(W)) / np.sqrt(N)
         w_u1 = W[:, 0]  # (N,)
         w_u2 = W[:, 1]  # (N,)
 
