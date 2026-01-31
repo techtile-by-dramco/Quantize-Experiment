@@ -191,7 +191,8 @@ class qpsk_demodulator(gr.top_block):
 
     def set_arity(self, arity):
         self.arity = arity
-
+    def get_evm_pct(self):
+        return self.blocks_probe_signal_x_0.level()
 
 def argument_parser():
     parser = ArgumentParser()
