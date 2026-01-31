@@ -130,13 +130,14 @@ csi_P2s = []
 
 def compute_rzf_weights_from_conj_channels(g_list, lam, ap_power=1.0, debug=False):
     """
-    Compute downlink RZF/ZF precoder W given G = H* (conjugated channels).
+    Compute downlink RZF/ZF precoder W given G = H* (conjugated channels),
+    using GLOBAL SCALING (no per-AP row normalization).
 
     Inputs:
       g_list: list of length K, each element is np.array shape (N,) complex, containing g_k = h_k* across APs.
       lam: RZF regularization (0 -> ZF)
-      ap_power: scalar to scale per-AP power after normalization.
-      debug: print effective channel diagnostics (H@W) before/after normalization.
+      ap_power: per-AP maximum allowed power (upper bound)
+      debug: print effective channel diagnostics
 
     Returns:
       W: np.array shape (N, K) complex, per-AP weights for each user stream.
@@ -152,72 +153,65 @@ def compute_rzf_weights_from_conj_channels(g_list, lam, ap_power=1.0, debug=Fals
     if K_chk != K:
         raise RuntimeError("Internal shape error building G")
 
-    # Recover H from G: since G = H*, then H = G*
+    # Recover H from G (since G = H*)
     H = G.conj()  # (K, N)
 
-    # GG = G* G^T  (K,K)
-    GG = G.conj() @ G.T  # (K,K)
+    # Core RZF / ZF
+    GG = G.conj() @ G.T                      # (K, K)
+    A = np.linalg.inv(GG + lam * np.eye(K))  # (K, K)
+    W = G.T @ A                              # (N, K)
 
-    # Invert (GG + lam I)
-    A = np.linalg.inv(GG + lam * np.eye(K, dtype=np.complex128))  # (K,K)
-
-    # W (unnormalized) = G^T A   (N,K)
-    W = G.T @ A
-
+    # =============================
+    # DEBUG: before scaling
+    # =============================
     if debug:
-        # Effective channel BEFORE normalization
-        E0 = H @ W  # (K,K)
-        diag0 = np.abs(np.diag(E0)) ** 2
+        E0 = H @ W
+        print("---- DEBUG: before global scaling ----")
+        print("E0 = H@W:\n", E0)
+        print("|diag(E0)|^2 =", np.abs(np.diag(E0))**2)
         off0 = E0.copy()
         np.fill_diagonal(off0, 0.0)
-        off0_pow = np.abs(off0) ** 2
+        print("|offdiag(E0)|^2 =\n", np.abs(off0)**2)
 
-        Pcols0 = np.sum(np.abs(W) ** 2, axis=0)  # (K,)
+        Pcols0 = np.sum(np.abs(W)**2, axis=0)
+        print("stream powers Pk =", Pcols0)
 
-        print("---- DEBUG: before row-norm ----")
-        print("lam =", lam)
-        print("E0 = H@W (before norm):\n", E0)
-        print("|diag(E0)|^2 =", diag0)
-        print("|offdiag(E0)|^2 =\n", off0_pow)
-        print("stream powers Pk = sum_n |w_nk|^2 =", Pcols0)
-        if K >= 2:
-            ratio_db = 10 * np.log10((Pcols0[0] + eps) / (Pcols0[1] + eps))
-            print(f"P1/P2 ratio(dB) = {ratio_db:.2f}")
+        prow0 = np.sum(np.abs(W)**2, axis=1)
+        print("per-AP power BEFORE scaling: min/mean/max =",
+              float(np.min(prow0)), float(np.mean(prow0)), float(np.max(prow0)))
 
-    # -----------------------------
-    # Per-AP (row) normalization:
-    # enforce sum_k |w_{n,k}|^2 = ap_power
-    # -----------------------------
-    row_norm = np.linalg.norm(W, axis=1, keepdims=True) + eps  # (N,1)
-    W = W / row_norm
+    # =============================
+    # GLOBAL SCALING (关键改动)
+    # =============================
     if ap_power is not None:
-        W = np.sqrt(float(ap_power)) * W
+        # 每个 AP 的功率
+        prow = np.sum(np.abs(W)**2, axis=1)   # (N,)
+        max_p = np.max(prow)
 
+        # 全局缩放因子：保证所有 AP 都不超 ap_power
+        alpha = np.sqrt(float(ap_power) / (max_p + eps))
+        W = alpha * W
+
+    # =============================
+    # DEBUG: after scaling
+    # =============================
     if debug:
-        # Effective channel AFTER normalization
-        E1 = H @ W  # (K,K)
-        diag1 = np.abs(np.diag(E1)) ** 2
+        E1 = H @ W
+        print("---- DEBUG: after global scaling ----")
+        print("E1 = H@W:\n", E1)
+        print("|diag(E1)|^2 =", np.abs(np.diag(E1))**2)
         off1 = E1.copy()
         np.fill_diagonal(off1, 0.0)
-        off1_pow = np.abs(off1) ** 2
+        print("|offdiag(E1)|^2 =\n", np.abs(off1)**2)
 
-        Pcols1 = np.sum(np.abs(W) ** 2, axis=0)  # (K,)
+        Pcols1 = np.sum(np.abs(W)**2, axis=0)
+        print("stream powers Pk =", Pcols1)
 
-        # also verify per-AP constraint
-        prow = np.sum(np.abs(W) ** 2, axis=1)
-        print("---- DEBUG: after row-norm ----")
-        print("E1 = H@W (after norm):\n", E1)
-        print("|diag(E1)|^2 =", diag1)
-        print("|offdiag(E1)|^2 =\n", off1_pow)
-        print("stream powers Pk = sum_n |w_nk|^2 =", Pcols1)
-        if K >= 2:
-            ratio_db = 10 * np.log10((Pcols1[0] + eps) / (Pcols1[1] + eps))
-            print(f"P1/P2 ratio(dB) = {ratio_db:.2f}")
-        print("per-AP power check: min/mean/max =", float(np.min(prow)), float(np.mean(prow)), float(np.max(prow)))
+        prow1 = np.sum(np.abs(W)**2, axis=1)
+        print("per-AP power AFTER scaling: min/mean/max =",
+              float(np.min(prow1)), float(np.mean(prow1)), float(np.max(prow1)))
 
     return W
-
-
 
 with open(output_path, "w") as f:
     f.write(f"experiment: {unique_id}\n")
