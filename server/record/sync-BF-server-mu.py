@@ -22,9 +22,11 @@ DEFAULT_HOST = "*"               # Host address to bind to. "*" means all availa
 DEFAULT_SYNC_PORT = "5557"       # Port used for synchronization messages.
 DEFAULT_ALIVE_PORT = "5558"      # Port used for heartbeat/alive messages.
 DEFAULT_DATA_PORT = "5559"       # Port used for data transmission.
-DEFAULT_PILOT_PORT =  "5560"  # Port used for PILOT transmission
+DEFAULT_PILOT_PORT = "5560"      # Port used for PILOT transmission
 DEFAULT_DELAY = 2                # Seconds to wait before sending SYNC
 DEFAULT_SUBS = 42                # Expected subscribers
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="ZMQ sync server for GBWPT experiments.")
     parser.add_argument("--host", default=DEFAULT_HOST, help="Host to bind (default: *)")
@@ -34,7 +36,7 @@ def parse_args():
     parser.add_argument(
         "--pilot-port",
         default=DEFAULT_PILOT_PORT,
-        help="Port for Pilot REP (default: 5560)",
+        help="Port for Pilot ROUTER (default: 5560)",
     )
     parser.add_argument("--delay", type=int, default=DEFAULT_DELAY, help="Delay before sending SYNC (seconds)")
     parser.add_argument("--num-pilots", type=int, default=DEFAULT_SUBS, help="Expected pilots before SYNC")
@@ -50,6 +52,23 @@ def parse_args():
         default=60.0 * 10.0,
         help="Timeout in seconds to give up waiting for new ready messages once some arrived (default: 600s).",
     )
+
+    # RZF regularization (lam=0 -> pure ZF)
+    parser.add_argument(
+        "--rzf-lam",
+        type=float,
+        default=1e-6,
+        help="RZF regularization lambda (default: 1e-6). Use 0 for pure ZF.",
+    )
+
+    # Optional overall AP power scalar (after per-AP normalization)
+    parser.add_argument(
+        "--ap-power",
+        type=float,
+        default=1.0,
+        help="Per-AP target power scalar after row-normalization (default: 1.0).",
+    )
+
     return parser.parse_args()
 
 
@@ -62,50 +81,37 @@ sync_port = args.sync_port
 alive_port = args.alive_port
 data_port = args.data_port
 pilot_port = args.pilot_port
-# Maximum time to wait for messages before breaking out of the inner loop
 WAIT_TIMEOUT = args.wait_timeout
+
+RZF_LAM = float(args.rzf_lam)
+AP_POWER = float(args.ap_power)
 
 # Creates a socket instance
 context = zmq.Context()
 
 sync_socket = context.socket(zmq.PUB)
-# Binds the socket to a predefined port on localhost
 sync_socket.bind("tcp://{}:{}".format(host, sync_port))
 
-# Create a SUB socket to listen for subscribers
 alive_socket = context.socket(zmq.REP)
 alive_socket.bind("tcp://{}:{}".format(host, alive_port))
 
-# Create a SUB socket to listen for subscribers
 data_socket = context.socket(zmq.REP)
 data_socket.bind("tcp://{}:{}".format(host, data_port))
 
 # Measurement and experiment identifiers
 meas_id = 0
-
-# Unique ID for the experiment based on current UTC timestamp
 unique_id = str(datetime.utcnow().strftime("%Y%m%d%H%M%S"))
 
-# Directory where this script is located
-# script_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)))
-
-# ZeroMQ alive_poller setup
 alive_poller = zmq.Poller()
-alive_poller.register(
-    alive_socket, zmq.POLLIN
-)  # Register the alive socket to monitor incoming messages
+alive_poller.register(alive_socket, zmq.POLLIN)
 
-# Track time of the last received message
 new_msg_received = 0
-# Inform the user that the experiment is starting
 print(f"Starting experiment: {unique_id}")
 
-# Path to save the experiment data as a YAML file
-current_file_path = os.path.abspath(__file__) 
+current_file_path = os.path.abspath(__file__)
 current_dir = os.path.dirname(current_file_path)
 parent_path = os.path.dirname(current_dir)
 output_path = os.path.join(parent_path, f"record/data/exp-{unique_id}.yml")
-
 
 # Use ROUTER socket to allow delayed reply
 router_socket = context.socket(zmq.ROUTER)
@@ -122,77 +128,102 @@ csi_P1s = []
 csi_P2s = []
 
 
+def compute_rzf_weights_from_conj_channels(g_list, lam, ap_power=1.0):
+    """
+    Compute downlink RZF/ZF precoder W given G = H* (conjugated channels).
+
+    Inputs:
+      g_list: list of length K, each element is np.array shape (N,) complex, containing g_k = h_k* across APs.
+              Here K=2 in your use-case, N=#APs.
+      lam: RZF regularization (0 -> ZF)
+      ap_power: scalar to scale per-AP power after normalization.
+
+    Returns:
+      W: np.array shape (N, K) complex, per-AP weights for each user stream.
+         Row n corresponds to AP n, column k corresponds to user k.
+    """
+    eps = 1e-12
+    K = len(g_list)
+    if K < 1:
+        raise ValueError("g_list must contain at least 1 user channel vector")
+
+    # Stack to G: (K, N), rows users, cols APs
+    G = np.vstack([np.asarray(g, dtype=np.complex128) for g in g_list])  # (K, N)
+    K_chk, N = G.shape
+    if K_chk != K:
+        raise RuntimeError("Internal shape error building G")
+
+    # GG = G* G^T  (K,K)
+    GG = G.conj() @ G.T
+
+    # Invert (GG + lam I)
+    A = np.linalg.inv(GG + lam * np.eye(K, dtype=np.complex128))  # (K,K)
+
+    # W = G^T A   (N,K)
+    W = G.T @ A
+
+    # -----------------------------
+    # Per-AP (row) normalization:
+    # enforce sum_k |w_{n,k}|^2 = ap_power
+    # -----------------------------
+    row_norm = np.linalg.norm(W, axis=1, keepdims=True) + eps  # (N,1)
+    W = W / row_norm
+    if ap_power is not None:
+        W = np.sqrt(float(ap_power)) * W
+
+    return W
+
 
 with open(output_path, "w") as f:
-    # Write experiment metadata to the YAML file
     f.write(f"experiment: {unique_id}\n")
     f.write(f"num_subscribers: {num_subscribers}\n")
     f.write(f"num_pilots: {num_pilots}\n")
+    f.write(f"rzf_lambda: {RZF_LAM}\n")
+    f.write(f"ap_power: {AP_POWER}\n")
     f.write(f"measurments:\n")
 
     while True:
-        # Wait for all subscribers to send a message
-        print(f"Waiting for {num_subscribers+num_pilots} subscribers to send a message...")
+        print(f"Waiting for {num_subscribers + num_pilots} subscribers to send a message...")
 
-        # Start a new measurement entry in the YAML file
         f.write(f"  - meas_id: {meas_id}\n")
         f.write("    active_tiles:\n")
 
-        # Track number of messages received from subscribers
         messages_received = 0
-        start_processing = None
 
         ################## SYNC ###########################################
-
         while messages_received < num_subscribers + num_pilots:
-            # Poll the socket for incoming messages with a 1-second timeout
             socks = dict(alive_poller.poll(1000))
 
-            # If some messages were received but no new message comes within WAIT_TIMEOUT, break
             if messages_received > 2 and time.time() - new_msg_received > WAIT_TIMEOUT:
                 break
 
             if alive_socket in socks and socks[alive_socket] == zmq.POLLIN:
-                # Record time when a new message is received
                 new_msg_received = time.time()
-
-                # Receive the message string from the subscriber
                 message = alive_socket.recv_string()
                 messages_received += 1
 
-                # Print received message and write it to the YAML file
                 print(f"{message} ({messages_received}/{num_subscribers})")
                 f.write(f"     - {message}\n")
 
-                # Process the request (example placeholder)
-                response = "Response from server"
+                alive_socket.send_string("Response from server")
 
-                # Send response back to the subscriber
-                alive_socket.send_string(response)
-
-        # Wait a fixed delay before sending the next SYNC signal
         print(f"sending 'SYNC' message in {delay}s...")
         f.flush()
         time.sleep(delay)
 
-        # Increment measurement ID for next iteration
         meas_id += 1
-
-        # Broadcast synchronization message to all subscribers
-        sync_socket.send_string(f"{meas_id} {unique_id}")  # str(meas_id)
+        sync_socket.send_string(f"{meas_id} {unique_id}")
         print(f"SYNC {meas_id}")
 
         ################## PILOT ###########################################
-        # Clear for new round
         identities.clear()
         hostnames.clear()
         csi_P1s.clear()
         csi_P2s.clear()
 
         messages_received = 0
-        start_time = time.time()
 
-        # Receive all subscriber messages
+        # Receive all subscriber messages (CSI)
         while messages_received < num_subscribers:
             socks = dict(csi_poller.poll(1000))
             if router_socket in socks and socks[router_socket] == zmq.POLLIN:
@@ -206,10 +237,16 @@ with open(output_path, "w") as f:
                 ampl_P1 = float(msg_json.get("ampl_P1", 0.0))
                 ampl_P2 = float(msg_json.get("ampl_P2", 0.0))
 
+                # IMPORTANT:
+                # You stated AP reports h*.
+                # So we interpret: g_k = h_k* = ampl_k * exp(j * phi_Pk)
+                g1 = ampl_P1 * np.exp(1j * phi_P1)
+                g2 = ampl_P2 * np.exp(1j * phi_P2)
+
                 identities.append(identity)
                 hostnames.append(hostname)
-                csi_P1s.append(ampl_P1 * np.exp(1j * phi_P1))
-                csi_P2s.append(ampl_P2 * np.exp(1j * phi_P2))
+                csi_P1s.append(g1)
+                csi_P2s.append(g2)
 
                 messages_received += 1
                 print(
@@ -224,91 +261,69 @@ with open(output_path, "w") as f:
                         ampl_P2,
                     )
                 )
-
                 f.write(f"     - {hostname}\n")
 
         if messages_received == 0:
             continue
 
         # =============================
-        # Dual-user ZF / RZF (complex weights)
+        # Dual-user ZF / RZF using G=H*
         # =============================
-        h1 = np.asarray(csi_P1s, dtype=np.complex128)  # UE1 channel across APs, (N,)
-        h2 = np.asarray(csi_P2s, dtype=np.complex128)  # UE2 channel across APs, (N,)
+        g1 = np.asarray(csi_P1s, dtype=np.complex128)  # (N,)
+        g2 = np.asarray(csi_P2s, dtype=np.complex128)  # (N,)
 
-        # Sanity checks
         N = len(identities)
-        if h1.size != N or h2.size != N:
-            print(f"ERROR: size mismatch: h1={h1.size}, h2={h2.size}, identities={N}")
+        if g1.size != N or g2.size != N:
+            print(f"ERROR: size mismatch: g1={g1.size}, g2={g2.size}, identities={N}")
             continue
 
-        # Build H: (2, N)   rows = users, cols = APs
-        H = np.vstack([h1, h2])  # (2, N)
-
-        # Regularized ZF (RZF) for stability (lambda=0 -> pure ZF)
-        lam = 1e-6
-        HH = H @ H.conj().T  # (2,2)
-
+        # Compute W with row-normalization for fixed per-AP power
         try:
-            W = H.conj().T @ np.linalg.inv(HH + lam * np.eye(2))  # (N,2)
+            W = compute_rzf_weights_from_conj_channels(
+                [g1, g2],
+                lam=RZF_LAM,
+                ap_power=AP_POWER,
+            )  # (N,2)
         except np.linalg.LinAlgError as e:
-            print("ERROR: inversion failed:", e)
+            print("ERROR: matrix inversion failed:", e)
+            continue
+        except Exception as e:
+            print("ERROR: compute_rzf_weights_from_conj_channels failed:", e)
             continue
 
-        # Optional: normalize each user-stream column (keeps per-stream power consistent)
-        W = W / (np.linalg.norm(W, axis=0, keepdims=True) + 1e-12)
-        w_u1 = W[:, 0]  # (N,)
-        w_u2 = W[:, 1]  # (N,)
+        w_u1 = W[:, 0]
+        w_u2 = W[:, 1]
 
         # Reply: send full complex weights (re/im) so AP can apply amplitude+phase
         for idx, identity in enumerate(identities):
             response = {
-                # UE1 weight for this AP
                 "w_u1_re": float(np.real(w_u1[idx])),
                 "w_u1_im": float(np.imag(w_u1[idx])),
-                # UE2 weight for this AP
                 "w_u2_re": float(np.real(w_u2[idx])),
                 "w_u2_im": float(np.imag(w_u2[idx])),
             }
             router_socket.send_multipart([identity, json.dumps(response).encode()])
+
         f.flush()
 
-        # Wait for all subscribers to send a TX MODE message
+        ################## TX MODE WAIT ####################################
         print(f"Waiting for {num_subscribers} subscribers to send a TX Mode ...")
-
-        # Track number of messages received from subscribers
         messages_received = 0
-        start_processing = None
 
         while messages_received < num_subscribers:
-            # Poll the socket for incoming messages with a 1-second timeout
             socks = dict(alive_poller.poll(1000))
 
-            # If some messages were received but no new message comes within WAIT_TIMEOUT, break
             if messages_received > 2 and time.time() - new_msg_received > WAIT_TIMEOUT:
                 break
 
             if alive_socket in socks and socks[alive_socket] == zmq.POLLIN:
-                # Record time when a new message is received
                 new_msg_received = time.time()
-
-                # Receive the message string from the subscriber
                 message = alive_socket.recv_string()
                 messages_received += 1
-
-                # Print received message and write it to the YAML file
                 print(f"{message} ({messages_received}/{num_subscribers})")
+                alive_socket.send_string("Response from server")
 
-                # Process the request (example placeholder)
-                response = "Response from server"
-
-                # Send response back to the subscriber
-                alive_socket.send_string(response)
-
-        print(f"Wait 10s ...")
-
+        print("Wait 10s ...")
         time.sleep(10)
-
-        # print(f"Measure phases")
 
         # save_phases()
