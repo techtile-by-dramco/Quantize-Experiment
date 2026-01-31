@@ -91,7 +91,7 @@ class qpsk_demodulator(gr.top_block):
         self.digital_costas_loop_cc_0 = digital.costas_loop_cc(phase_bw, arity, False)
         self.blocks_probe_signal_x_0 = blocks.probe_signal_f()
         self.blocks_moving_average_xx_0 = blocks.moving_average_ff(500, 0.002, 4000, 1)
-        self.analog_agc_xx_0 = analog.agc_cc((1e-4), 1.0, 1.0, 65536)
+        self.analog_agc_xx_0 = analog.agc_cc((1e-4), 1.0, 1.0)
 
 
         ##################################################
