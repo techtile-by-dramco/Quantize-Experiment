@@ -204,7 +204,7 @@ def load_tx_bin_complex64(bin_path: str) -> np.ndarray:
 
     x = np.fromfile(bin_path, dtype=np.complex64)
     if x.size == 0:
-        raise ValueError(f"tx.bin contains 0 samples: {bin_path}")
+        raise ValueError(f"tx1.bin contains 0 samples: {bin_path}")
 
     return x.astype(np.complex64, copy=False)
 
@@ -544,9 +544,9 @@ def tx_ref(usrp, tx_streamer, quit_event, phase, amplitude, start_time=None):
 
     # Load tx.bin from the same folder as this script
     script_dir = os.path.dirname(os.path.realpath(__file__))
-    tx_bin_path = os.path.join(script_dir, "tx.bin")
+    tx_bin_path = os.path.join(script_dir, "tx1.bin")
     base_wave = load_tx_bin_complex64(tx_bin_path)  # 1-D complex64
-    logger.info("Loaded tx.bin as complex64: %s (samples=%d)", tx_bin_path, int(base_wave.size))
+    logger.info("Loaded tx1.bin as complex64: %s (samples=%d)", tx_bin_path, int(base_wave.size))
 
     # Reproducible RNG per measurement id
     try:
