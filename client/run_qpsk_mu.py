@@ -1006,13 +1006,7 @@ def main():
         alive_socket.close()
 
         # Hardware/common phase compensation ONLY (keep your original intention)
-        phase_hw = float(phi_RL - np.deg2rad(phi_cable))
-        logger.info(
-            "HW phase compensation: %s (rad) / %s%s",
-            fmt(phase_hw),
-            fmt(np.rad2deg(phase_hw)),
-            DEG,
-        )
+        phase_hw = phi_RL - np.deg2rad(phi_cable)
 
         # STEP 6: Timed MU-ZF TX: x = exp(j*phase_hw) * (w_u1*tx1 + w_u2*tx2)
         tx_phase_coh(
