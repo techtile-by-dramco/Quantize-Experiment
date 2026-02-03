@@ -246,7 +246,7 @@ def compute_mrt_phase_only_weights_from_conj_channels(g_list, eps=1e-12, debug=F
 
     # phase-only MRT: w_kn = exp(j*angle(g_kn))
     phases = np.angle(G)                 # (K, N)
-    W = np.exp(1j * phases).T            # (N, K)
+    W = np.conj(np.exp(1j * phases)).T   # (N, K)
 
     # per-AP normalization: each row n normalized to unit power across K streams
     prow = np.sum(np.abs(W)**2, axis=1)  # (N,)
