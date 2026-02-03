@@ -798,6 +798,7 @@ def get_BF(ampl_P1, phi_P1, ampl_P2, phi_P2):
         "phi_P1": float(phi_P1),
         "ampl_P2": float(ampl_P2),
         "phi_P2": float(phi_P2),
+        "beamformer": str(BEAMFORMER).upper(),
     }
 
     dealer_socket.send(json.dumps(msg).encode())
