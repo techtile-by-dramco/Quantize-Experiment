@@ -650,8 +650,8 @@ def tx_ref(usrp, tx_streamer, quit_event, w_u1, w_u2, phase_hw, start_time=None)
             hw_rot = np.exp(1j * np.float32(phase_hw)).astype(np.complex64)
             x = (hw_rot * (w_u1 * c1 + w_u2 * c2)).astype(np.complex64, copy=False)
             peak = np.max(np.abs(x)) + 1e-12
-            if peak > 1.0:
-                x = (1.0 / peak) * x
+            if peak > 0.9:
+                x = (0.9 / peak) * x
             # ---- DEBUG amplitude at baseband before send ----
             if idx == 0:  # 只打印一次/每轮打印一次，避免刷屏
                 rms_x = float(np.sqrt(np.mean(np.abs(x)**2)))
