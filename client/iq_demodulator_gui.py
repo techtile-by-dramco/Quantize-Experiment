@@ -336,7 +336,7 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
         self.blocks_moving_average_xx_0_0 = blocks.moving_average_ff(500, 0.002, 4000, 1)
         self.blocks_moving_average_xx_0 = blocks.moving_average_ff(10000, 0.0001, 4000, 1)
         self.blocks_complex_to_mag_squared_0 = blocks.complex_to_mag_squared(1)
-        self.analog_agc_xx_0 = analog.agc_cc((1e-4), 1.0, 1.0, 65536)
+        self.analog_agc_xx_0 = analog.agc_cc((1e-4), 1.0, 1.0)
 
 
         ##################################################
