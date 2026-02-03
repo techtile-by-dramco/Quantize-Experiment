@@ -649,7 +649,19 @@ def tx_ref(usrp, tx_streamer, quit_event, w_u1, w_u2, phase_hw, start_time=None)
             # ---- MU superposition on tx_ch ----
             hw_rot = np.exp(1j * np.float32(phase_hw)).astype(np.complex64)
             x = (hw_rot * (w_u1 * c1 + w_u2 * c2)).astype(np.complex64, copy=False)
-
+            # ---- DEBUG amplitude at baseband before send ----
+            if idx == 0:  # 只打印一次/每轮打印一次，避免刷屏
+                rms_x = float(np.sqrt(np.mean(np.abs(x)**2)))
+                peak_x = float(np.max(np.abs(x)))
+                papr_db = 20*np.log10((peak_x + 1e-12) / (rms_x + 1e-12))
+                logger.info(
+                    "[%s] TX baseband stats: |w|^2=%.3f, RMS(x)=%.3e, PEAK(x)=%.3e, PAPR=%.2f dB",
+                    HOSTNAME,
+                    (abs(w_u1)**2 + abs(w_u2)**2),
+                    rms_x,
+                    peak_x,
+                    papr_db
+                )
             if ENABLE_DITHER:
                 x = add_complex_dither(x, rel_std=DITHER_REL_STD, rng=rng)
 
@@ -802,13 +814,13 @@ def get_BF(ampl_P1, phi_P1, ampl_P2, phi_P2):
     w_u1 = complex(float(response["w_u1_re"]), float(response["w_u1_im"]))
     w_u2 = complex(float(response["w_u2_re"]), float(response["w_u2_im"]))
 
-    # ---- per-AP power normalization (important!) ----
-    # This ensures the combined transmit power (before global TX gain) is bounded.
-    p = (abs(w_u1) ** 2 + abs(w_u2) ** 2)
-    if p > 1e-12:
-        scale = 1.0 / np.sqrt(max(p, 1e-12))
-        w_u1 *= scale
-        w_u2 *= scale
+    # # ---- per-AP power normalization (important!) ----
+    # # This ensures the combined transmit power (before global TX gain) is bounded.
+    # p = (abs(w_u1) ** 2 + abs(w_u2) ** 2)
+    # if p > 1e-12:
+    #     scale = 1.0 / np.sqrt(max(p, 1e-12))
+    #     w_u1 *= scale
+    #     w_u2 *= scale
 
     logger.info("[%s] MU-ZF weights: w_u1=%s w_u2=%s |w|^2=%.3f",
                 HOSTNAME, w_u1, w_u2, (abs(w_u1)**2 + abs(w_u2)**2))

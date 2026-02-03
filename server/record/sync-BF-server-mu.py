@@ -331,6 +331,14 @@ with open(output_path, "w") as f:
         P1 = float(np.sum(np.abs(w_u1)**2))
         P2 = float(np.sum(np.abs(w_u2)**2))
         print(f"stream powers: P1={P1:.3f}, P2={P2:.3f}, ratio(dB)={10*np.log10(P1/(P2+1e-12)):.2f}")
+        print("==== Per-AP precoder amplitudes ====")
+        for n in range(len(w_u1)):
+            print(
+                f"AP{n:02d}: |w1|={abs(w_u1[n]):.4e}, "
+                f"|w2|={abs(w_u2[n]):.4e}, "
+                f"P_AP={abs(w_u1[n])**2 + abs(w_u2[n])**2:.4e}"
+            )
+
 
         # Reply: send full complex weights (re/im) so AP can apply amplitude+phase
         for idx, identity in enumerate(identities):
