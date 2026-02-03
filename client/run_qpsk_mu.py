@@ -858,6 +858,28 @@ def tx_phase_coh(usrp, tx_streamer, quit_event, w_u1: complex, w_u2: complex, ph
     return tx_thr, tx_meta_thr
 
 
+def get_BF_mrt_phase_only(phi_RP1, phi_RP2, phi_cable_rad, p1=1.0, p2=1.0, eps=1e-12):
+    """
+    MU-MRT aligned to the *validated single-user* code:
+
+        w_k = sqrt(p_k) * exp( j*(phi_RPk - phi_cable) )
+
+    Then per-AP power normalization: |w1|^2 + |w2|^2 <= 1.
+    """
+    w_u1 = np.sqrt(float(p1)) * np.exp(1j * (float(phi_RP1) - float(phi_cable_rad)))
+    w_u2 = np.sqrt(float(p2)) * np.exp(1j * (float(phi_RP2) - float(phi_cable_rad)))
+
+    p = (abs(w_u1) ** 2 + abs(w_u2) ** 2)
+    if p > eps:
+        s = 1.0 / np.sqrt(p)
+        w_u1 *= s
+        w_u2 *= s
+
+    logger.info("[%s] MU-MRT(phase-only): w_u1=%s w_u2=%s |w|^2=%.3f",
+                HOSTNAME, w_u1, w_u2, (abs(w_u1)**2 + abs(w_u2)**2))
+    return w_u1, w_u2
+
+
 
 # =============================================================================
 #                           CLI + Main
@@ -991,13 +1013,20 @@ def main():
                 logger.error(exc)
 
         # STEP 5: Get MU-ZF weights (two columns) from server for this AP
-        w_u1, w_u2 = get_BF(
-            A_P1,
-            -phi_RP1 + np.deg2rad(phi_cable),
-            A_P2,
-            -phi_RP2 + np.deg2rad(phi_cable),
-        )
+        # w_u1, w_u2 = get_BF(
+        #     A_P1,
+        #     -phi_RP1 + np.deg2rad(phi_cable),
+        #     A_P2,
+        #     -phi_RP2 + np.deg2rad(phi_cable),
+        # )
+        phi_cable_rad = np.deg2rad(phi_cable)
 
+        w_u1, w_u2 = get_BF_mrt_phase_only(
+            phi_RP1=phi_RP1,
+            phi_RP2=phi_RP2,
+            phi_cable_rad=phi_cable_rad,
+            p1=1.0, p2=1.0
+        )
         # Inform server TX mode (unchanged)
         alive_socket = context.socket(zmq.REQ)
         alive_socket.connect(f"tcp://{SERVER_IP}:{5558}")
