@@ -1035,14 +1035,14 @@ def main():
             A_P2,
             -phi_RP2 + np.deg2rad(phi_cable),
         )
-        # phi_cable_rad = np.deg2rad(phi_cable)
+        phi_cable_rad = np.deg2rad(phi_cable)
 
-        # w_u1, w_u2 = get_BF_mrt_phase_only(
-        #     phi_RP1=phi_RP1,
-        #     phi_RP2=phi_RP2,
-        #     phi_cable_rad=phi_cable_rad,
-        #     p1=1.0, p2=1.0
-        # )
+        w_u1, w_u2 = get_BF_mrt_phase_only(
+            phi_RP1=phi_RP1,
+            phi_RP2=phi_RP2,
+            phi_cable_rad=phi_cable_rad,
+            p1=1.0, p2=1.0
+        )
         # Inform server TX mode (unchanged)
         alive_socket = context.socket(zmq.REQ)
         alive_socket.connect(f"tcp://{SERVER_IP}:{5558}")
