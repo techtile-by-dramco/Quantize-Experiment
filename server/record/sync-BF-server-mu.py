@@ -202,7 +202,7 @@ def compute_rzf_weights_from_conj_channels(g_list, lam, ap_power=1.0, debug=Fals
         # p_ref = float(np.median(prow))
         # alpha = np.sqrt(ap_power / (p_ref + eps))
         # W = alpha * W
-        alpha = 1.0
+        alpha = 2.5
         W = alpha * W
     # =============================
     # DEBUG: after scaling
