@@ -1013,12 +1013,12 @@ def main():
                 logger.error(exc)
 
         # STEP 5: Get MU-ZF weights (two columns) from server for this AP
-        # w_u1, w_u2 = get_BF(
-        #     A_P1,
-        #     -phi_RP1 + np.deg2rad(phi_cable),
-        #     A_P2,
-        #     -phi_RP2 + np.deg2rad(phi_cable),
-        # )
+        w_u1, w_u2 = get_BF(
+            A_P1,
+            -phi_RP1 + np.deg2rad(phi_cable),
+            A_P2,
+            -phi_RP2 + np.deg2rad(phi_cable),
+        )
         phi_cable_rad = np.deg2rad(phi_cable)
 
         w_u1, w_u2 = get_BF_mrt_phase_only(
