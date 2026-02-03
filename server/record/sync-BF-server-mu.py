@@ -195,14 +195,15 @@ def compute_rzf_weights_from_conj_channels(g_list, lam, ap_power=1.0, debug=Fals
     # GLOBAL SCALING
     # =============================
     if ap_power is not None:
-        prow = np.sum(np.abs(W)**2, axis=1)   # (N,)
+        # prow = np.sum(np.abs(W)**2, axis=1)   # (N,)
         # max_p = np.max(prow)
         # alpha = np.sqrt(float(ap_power) / (max_p + eps))
         # W = alpha * W
-        p_ref = float(np.median(prow))
-        alpha = np.sqrt(ap_power / (p_ref + eps))
+        # p_ref = float(np.median(prow))
+        # alpha = np.sqrt(ap_power / (p_ref + eps))
+        # W = alpha * W
+        alpha = 0.05
         W = alpha * W
-
     # =============================
     # DEBUG: after scaling
     # =============================
