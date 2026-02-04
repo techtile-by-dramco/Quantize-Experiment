@@ -27,7 +27,7 @@ import socket
 # ****************************************************************************************** #
 
 SAVE_EVERY = 60.0  # seconds
-FOLDER = "MRT-2user"  # subfolder inside data/where to save measurement data
+FOLDER = "RZF-2user"  # subfolder inside data/where to save measurement data
 TIMESTAMP = round(time())
 DEFAULT_DURATION = None  # seconds, override via CLI
 
