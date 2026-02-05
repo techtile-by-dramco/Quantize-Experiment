@@ -153,7 +153,7 @@ def compute_rzf_weights_from_conj_channels(g_list, lam, ap_power=1.0, debug=Fals
     Returns:
       W: np.array shape (N, K) complex, per-AP weights for each user stream.
     """
-    eps = 1e-4
+    eps = 1e-3
     K = len(g_list)
     if K < 1:
         raise ValueError("g_list must contain at least 1 user channel vector")
