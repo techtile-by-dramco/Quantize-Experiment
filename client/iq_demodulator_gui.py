@@ -187,7 +187,7 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
             1,
             None # parent
         )
-        self.qtgui_number_sink_1.set_update_time(0.02)
+        self.qtgui_number_sink_1.set_update_time(0.05)
         self.qtgui_number_sink_1.set_title("EVM")
 
         labels = ['', '', '', '', '',
@@ -312,7 +312,7 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
         self.blocks_tag_debug_0 = blocks.tag_debug(gr.sizeof_gr_complex*1, 'SNR', "")
         self.blocks_tag_debug_0.set_display(True)
         self.blocks_probe_signal_x_0 = blocks.probe_signal_f()
-        self.blocks_moving_average_xx_0_0 = blocks.moving_average_ff(200, 0.002, 4000, 1)
+        self.blocks_moving_average_xx_0_0 = blocks.moving_average_ff(400, 0.002, 4000, 1)
         self.analog_agc_xx_0 = analog.agc_cc((1e-4), 1.0, 1.0)
 
 
