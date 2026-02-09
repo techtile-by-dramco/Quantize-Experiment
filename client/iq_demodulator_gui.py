@@ -139,7 +139,7 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
         #         channels=list(range(0,1)),
         #     ),
         self.uhd_usrp_source_0 = uhd.usrp_source(
-            ",".join(("serial=31DBAB8", "")),
+            ",".join(("serial=31DEAB8", "")),
             uhd.stream_args(
                 cpu_format="fc32",
                 args='',
