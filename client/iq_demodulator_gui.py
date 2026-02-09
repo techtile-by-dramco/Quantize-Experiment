@@ -28,6 +28,10 @@ from gnuradio import eng_notation
 from gnuradio import uhd
 import time
 import sip
+import threading
+import json
+import zmq
+import time as _time
 
 
 
@@ -327,15 +331,78 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
         self.connect((self.digital_mpsk_snr_est_cc_0, 0), (self.blocks_tag_debug_0, 0))
         self.connect((self.digital_symbol_sync_xx_0, 0), (self.digital_linear_equalizer_0, 0))
         self.connect((self.uhd_usrp_source_0, 0), (self.analog_agc_xx_0, 0))
+    # -----------------------------
+    # EVM getter (from probe)
+    # -----------------------------
+    def get_evm_pct(self):
+        # blocks_probe_signal_x_0 is fed by moving average of meas_evm_cc_0 output
+        return float(self.blocks_probe_signal_x_0.level())
+
+    # -----------------------------
+    # ZMQ PUB: publish EVM
+    # -----------------------------
+    def start_evm_publisher(self, bind_addr="tcp://*:52001", period_s=0.05):
+        """
+        Start a background thread that publishes EVM (%).
+        Message format: {"t": <unix_time>, "evm_pct": <float>}
+        """
+        # avoid double-start
+        if getattr(self, "_evm_pub_running", False):
+            return
+
+        self._evm_pub_running = True
+        self._evm_pub_period_s = period_s
+
+        self._zmq_ctx = zmq.Context.instance()
+        self._evm_pub = self._zmq_ctx.socket(zmq.PUB)
+        self._evm_pub.bind(bind_addr)
+
+        self._evm_stop_flag = {"stop": False}
+
+        def _publisher():
+            # PUB/SUB may drop messages until subscribers connect
+            _time.sleep(0.2)
+            while not self._evm_stop_flag["stop"]:
+                try:
+                    evm_pct = self.get_evm_pct()
+                    msg = {"t": _time.time(), "evm_pct": evm_pct}
+                    self._evm_pub.send_string(json.dumps(msg))
+                except Exception:
+                    # keep alive even if temporarily not ready
+                    pass
+                _time.sleep(self._evm_pub_period_s)
+
+        self._evm_thread = threading.Thread(target=_publisher, daemon=True)
+        self._evm_thread.start()
+
+    def stop_evm_publisher(self):
+        if not getattr(self, "_evm_pub_running", False):
+            return
+        self._evm_pub_running = False
+
+        try:
+            self._evm_stop_flag["stop"] = True
+        except Exception:
+            pass
+
+        try:
+            # Do not hang on close
+            self._evm_pub.close(0)
+        except Exception:
+            pass
 
 
     def closeEvent(self, event):
         self.settings = Qt.QSettings("GNU Radio", "iq_demodulator_gui")
         self.settings.setValue("geometry", self.saveGeometry())
+
+        # stop publisher first
+        self.stop_evm_publisher()
+
         self.stop()
         self.wait()
-
         event.accept()
+
 
     def get_d(self):
         return self.d
@@ -496,12 +563,19 @@ def main(top_block_cls=iq_demodulator_gui, options=None):
 
     tb.start()
 
+    # Start ZMQ publisher (same as your non-GUI version)
+    tb.start_evm_publisher(bind_addr="tcp://*:52001", period_s=0.05)
+
     tb.show()
 
     def sig_handler(sig=None, frame=None):
+        try:
+            tb.stop_evm_publisher()
+        except Exception:
+            pass
+
         tb.stop()
         tb.wait()
-
         Qt.QApplication.quit()
 
     signal.signal(signal.SIGINT, sig_handler)
@@ -512,6 +586,7 @@ def main(top_block_cls=iq_demodulator_gui, options=None):
     timer.timeout.connect(lambda: None)
 
     qapp.exec_()
+
 
 if __name__ == '__main__':
     main()
