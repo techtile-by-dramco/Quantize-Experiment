@@ -131,13 +131,20 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
             self.controls_grid_layout_1.setRowStretch(r, 1)
         for c in range(0, 1):
             self.controls_grid_layout_1.setColumnStretch(c, 1)
-        self.uhd_usrp_source_0 = uhd.usrp_source(
-            ",".join(("serial=31DEA81", "")),
+        # self.uhd_usrp_source_0 = uhd.usrp_source(
+        #     ",".join(("serial=31DEA81", "")),
+        #     uhd.stream_args(
+        #         cpu_format="fc32",
+        #         args='',
+        #         channels=list(range(0,1)),
+        #     ), # T01
+        usrp_source(
+            ",".join(("serial=31DEAB8", "")),
             uhd.stream_args(
                 cpu_format="fc32",
                 args='',
                 channels=list(range(0,1)),
-            ),
+            ), # T03
         )
         self.uhd_usrp_source_0.set_samp_rate(samp_rate)
         # No synchronization enforced.
