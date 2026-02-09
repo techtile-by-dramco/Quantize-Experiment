@@ -138,13 +138,6 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
                 args='',
                 channels=list(range(0,1)),
             ),
-        self.uhd_usrp_source_0 = uhd.usrp_source(
-            ",".join(("serial=31DBAB8", "")),
-            uhd.stream_args(
-                cpu_format="fc32",
-                args='',
-                channels=list(range(0,1)),
-            ),
         )
         self.uhd_usrp_source_0.set_samp_rate(samp_rate)
         # No synchronization enforced.
@@ -309,7 +302,7 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
         self.blocks_tag_debug_0.set_display(True)
         self.blocks_probe_signal_x_0 = blocks.probe_signal_f()
         self.blocks_moving_average_xx_0_0 = blocks.moving_average_ff(500, 0.002, 4000, 1)
-        self.analog_agc_xx_0 = analog.agc_cc((1e-4), 1.0, 1.0)
+        self.analog_agc_xx_0 = analog.agc_cc((1e-4), 1.0, 1.0, 65536)
 
 
         ##################################################
