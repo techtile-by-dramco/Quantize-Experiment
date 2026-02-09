@@ -187,7 +187,7 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
             1,
             None # parent
         )
-        self.qtgui_number_sink_1.set_update_time(0.02)
+        self.qtgui_number_sink_1.set_update_time(0.05)
         self.qtgui_number_sink_1.set_title("EVM")
 
         labels = ['', '', '', '', '',
