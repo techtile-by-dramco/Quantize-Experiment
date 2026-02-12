@@ -50,7 +50,7 @@ W_U2 = None  # complex
 #                   Finite-resolution DAC Quantization (b-bit, midrise uniform)
 # =============================================================================
 ENABLE_DAC_QUANT = True         # True: enable DAC quantizer after precoding
-DAC_BITS = 1                    # b in the paper (bits per real dimension). Set b=1 for 1-bit.
+DAC_BITS = 12                    # b in the paper (bits per real dimension). Set b=1 for 1-bit.
 DAC_DELTA = None                # Quantization step size Δ. None => auto (RMS-based)
 DAC_FULLSCALE_RMS = 3.0         # Used only when DAC_DELTA=None: sets quantizer span ~ +/- (DAC_FULLSCALE_RMS * RMS)
 DAC_POWER_NORM = True           # Normalize quantized output power to match input RMS power (acts like alpha)
