@@ -52,7 +52,7 @@ W_U2 = None  # complex
 ENABLE_DAC_QUANT = True         # True: enable DAC quantizer after precoding
 DAC_BITS = 3                    # b in the paper (bits per real dimension). Set b=1 for 1-bit.
 DAC_DELTA = None                # Quantization step size Δ. None => auto (RMS-based)
-DAC_FULLSCALE_RMS = 3.0         # Used only when DAC_DELTA=None: sets quantizer span ~ +/- (DAC_FULLSCALE_RMS * RMS)
+DAC_FULLSCALE_RMS = 4.0         # Used only when DAC_DELTA=None: sets quantizer span ~ +/- (DAC_FULLSCALE_RMS * RMS)
 DAC_POWER_NORM = True           # Normalize quantized output power to match input RMS power (acts like alpha)
 DAC_EPS = 1e-12                 # numerical epsilon
 
