@@ -10,29 +10,25 @@
 # GNU Radio version: 3.10.10.0
 
 from PyQt5 import Qt
-from gnuradio import qtgui
 from PyQt5 import QtCore
+from gnuradio import qtgui
 from gnuradio import analog
 from gnuradio import blocks
 from gnuradio import digital
-from gnuradio import filter
 from gnuradio import gr
 from gnuradio.filter import firdes
 from gnuradio.fft import window
+from gnuradio import uhd
+
 import sys
 import signal
-from PyQt5 import Qt
-from argparse import ArgumentParser
-from gnuradio.eng_arg import eng_float, intx
-from gnuradio import eng_notation
-from gnuradio import uhd
-import time
 import sip
+
+# --- ZMQ publish (EVM) ---
 import threading
 import json
 import zmq
 import time as _time
-
 
 
 class iq_demodulator_gui(gr.top_block, Qt.QWidget):
@@ -46,6 +42,7 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
             self.setWindowIcon(Qt.QIcon.fromTheme('gnuradio-grc'))
         except BaseException as exc:
             print(f"Qt GUI: Could not set Icon: {str(exc)}", file=sys.stderr)
+
         self.top_scroll_layout = Qt.QVBoxLayout()
         self.setLayout(self.top_scroll_layout)
         self.top_scroll = Qt.QScrollArea()
@@ -72,22 +69,29 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
         ##################################################
         self.d = d = 1/(2**(1/2))
         self.sps = sps = 4
-        self.qpsk_mg = qpsk_mg = digital.constellation_rect([d+d*1j, -d+d*1j,-d-d*1j, d-d*1j], [0, 1, 3, 2],
-        4, 2, 2, 1, 1).base()
+        self.qpsk_mg = qpsk_mg = digital.constellation_rect(
+            [d+d*1j, -d+d*1j, -d-d*1j, d-d*1j],
+            [0, 1, 3, 2],
+            4, 2, 2, 1, 1
+        ).base()
         self.nfilts = nfilts = 32
         self.excess_bw = excess_bw = 0.35
         self.eq_gain = eq_gain = 0.0001
-        self.variable_adaptive_algorithm_0 = variable_adaptive_algorithm_0 = digital.adaptive_algorithm_cma( qpsk_mg, eq_gain, 1).base()
+        self.variable_adaptive_algorithm_0 = variable_adaptive_algorithm_0 = digital.adaptive_algorithm_cma(
+            qpsk_mg, eq_gain, 1
+        ).base()
         self.timing_loop_bw = timing_loop_bw = 6.28/200
         self.taps_per_filt = taps_per_filt = int((11*sps*nfilts)/nfilts)
-        self.taps_1 = taps_1 = [1,0,0,0.5]
-        self.taps = taps = [0.825,0,0,0,0.526]
+        self.taps_1 = taps_1 = [1, 0, 0, 0.5]
+        self.taps = taps = [0.825, 0, 0, 0, 0.526]
         self.samp_rate = samp_rate = 250000
-        self.rrc_taps_tx = rrc_taps_tx = firdes.root_raised_cosine(nfilts, nfilts, 1.0, excess_bw, 11*sps*nfilts)
-        self.rrc_taps = rrc_taps = firdes.root_raised_cosine(nfilts, nfilts, 1.0/float(sps), excess_bw, 11*sps*nfilts)
+        self.rrc_taps_tx = rrc_taps_tx = firdes.root_raised_cosine(
+            nfilts, nfilts, 1.0, excess_bw, 11*sps*nfilts
+        )
+        self.rrc_taps = rrc_taps = firdes.root_raised_cosine(
+            nfilts, nfilts, 1.0/float(sps), excess_bw, 11*sps*nfilts
+        )
         self.phase_bw = phase_bw = 6.28/200
-        self.noise_volt = noise_volt = 0
-        self.gain_tx = gain_tx = 50
         self.gain_rx = gain_rx = 40
         self.freq_offset = freq_offset = 0
         self.freq = freq = 920e6
@@ -104,120 +108,119 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
         self.controls_grid_layout_0 = Qt.QGridLayout()
         self.controls_layout_0.addLayout(self.controls_grid_layout_0)
         self.controls.addTab(self.controls_widget_0, 'TX')
+
         self.controls_widget_1 = Qt.QWidget()
         self.controls_layout_1 = Qt.QBoxLayout(Qt.QBoxLayout.TopToBottom, self.controls_widget_1)
         self.controls_grid_layout_1 = Qt.QGridLayout()
         self.controls_layout_1.addLayout(self.controls_grid_layout_1)
         self.controls.addTab(self.controls_widget_1, 'RX')
+
         self.top_grid_layout.addWidget(self.controls, 0, 0, 1, 2)
         for r in range(0, 1):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(0, 2):
             self.top_grid_layout.setColumnStretch(c, 1)
+
         self._timing_loop_bw_range = qtgui.Range(0.0, 0.1, 0.001, 6.28/200, 200)
-        self._timing_loop_bw_win = qtgui.RangeWidget(self._timing_loop_bw_range, self.set_timing_loop_bw, "timing_loop_bw", "counter_slider", float, QtCore.Qt.Horizontal)
+        self._timing_loop_bw_win = qtgui.RangeWidget(
+            self._timing_loop_bw_range, self.set_timing_loop_bw,
+            "timing_loop_bw", "counter_slider", float, QtCore.Qt.Horizontal
+        )
         self.controls_grid_layout_1.addWidget(self._timing_loop_bw_win, 0, 1, 1, 1)
-        for r in range(0, 1):
-            self.controls_grid_layout_1.setRowStretch(r, 1)
-        for c in range(1, 2):
-            self.controls_grid_layout_1.setColumnStretch(c, 1)
+
         self._phase_bw_range = qtgui.Range(0.0, 0.1, 0.01, 6.28/200, 200)
-        self._phase_bw_win = qtgui.RangeWidget(self._phase_bw_range, self.set_phase_bw, "Phase: Bandwidth", "counter_slider", float, QtCore.Qt.Horizontal)
+        self._phase_bw_win = qtgui.RangeWidget(
+            self._phase_bw_range, self.set_phase_bw,
+            "Phase: Bandwidth", "counter_slider", float, QtCore.Qt.Horizontal
+        )
         self.controls_grid_layout_1.addWidget(self._phase_bw_win, 1, 1, 1, 1)
-        for r in range(1, 2):
-            self.controls_grid_layout_1.setRowStretch(r, 1)
-        for c in range(1, 2):
-            self.controls_grid_layout_1.setColumnStretch(c, 1)
+
         self._gain_rx_range = qtgui.Range(0, 74, 1, 40, 200)
-        self._gain_rx_win = qtgui.RangeWidget(self._gain_rx_range, self.set_gain_rx, "gain_rx", "counter_slider", float, QtCore.Qt.Horizontal)
+        self._gain_rx_win = qtgui.RangeWidget(
+            self._gain_rx_range, self.set_gain_rx,
+            "gain_rx", "counter_slider", float, QtCore.Qt.Horizontal
+        )
         self.controls_grid_layout_1.addWidget(self._gain_rx_win, 0, 0, 1, 1)
-        for r in range(0, 1):
-            self.controls_grid_layout_1.setRowStretch(r, 1)
-        for c in range(0, 1):
-            self.controls_grid_layout_1.setColumnStretch(c, 1)
-        # self.uhd_usrp_source_0 = uhd.usrp_source(
-        #     ",".join(("serial=31DEA81", "")),
-        #     uhd.stream_args(
-        #         cpu_format="fc32",
-        #         args='',
-        #         channels=list(range(0,1)),
-        #     ), # T01
+
+        # ------------------------------------------------------------
+        # USRP Source: keep multiple options via comments (as requested)
+        # ------------------------------------------------------------
+        # Option A: T01
         self.uhd_usrp_source_0 = uhd.usrp_source(
-            ",".join(("serial=31DEAB8", "")),
+            ",".join(("serial=31DEA81", "")),
             uhd.stream_args(
                 cpu_format="fc32",
                 args='',
-                channels=list(range(0,1)),
-            ), # T03
+                channels=list(range(0, 1)),
+            ),
         )
+        # Option B: T03
+        # self.uhd_usrp_source_0 = uhd.usrp_source(
+        #     ",".join(("serial=31DEAB8", "")),
+        #     uhd.stream_args(
+        #         cpu_format="fc32",
+        #         args='',
+        #         channels=list(range(0, 1)),
+        #     ),
+        # )
+
         self.uhd_usrp_source_0.set_samp_rate(samp_rate)
         # No synchronization enforced.
-
         self.uhd_usrp_source_0.set_center_freq(freq, 0)
         self.uhd_usrp_source_0.set_antenna('TX/RX', 0)
         self.uhd_usrp_source_0.set_gain(gain_rx, 0)
         self.uhd_usrp_source_0.set_auto_dc_offset(False, 0)
         self.uhd_usrp_source_0.set_auto_iq_balance(False, 0)
+
         self.qtgui_sink_x_1_0 = qtgui.sink_c(
-            1024, #fftsize
-            window.WIN_BLACKMAN_hARRIS, #wintype
-            freq, #fc
-            samp_rate, #bw
-            "Rx_Signal", #name
-            True, #plotfreq
-            True, #plotwaterfall
-            True, #plottime
-            True, #plotconst
-            None # parent
+            1024,  # fftsize
+            window.WIN_BLACKMAN_hARRIS,  # wintype
+            freq,  # fc
+            samp_rate,  # bw
+            "Rx_Signal",  # name
+            True,  # plotfreq
+            True,  # plotwaterfall
+            True,  # plottime
+            True,  # plotconst
+            None  # parent
         )
         self.qtgui_sink_x_1_0.set_update_time(1.0/10)
         self._qtgui_sink_x_1_0_win = sip.wrapinstance(self.qtgui_sink_x_1_0.qwidget(), Qt.QWidget)
-
         self.qtgui_sink_x_1_0.enable_rf_freq(False)
-
         self.top_grid_layout.addWidget(self._qtgui_sink_x_1_0_win, 1, 1, 1, 1)
-        for r in range(1, 2):
-            self.top_grid_layout.setRowStretch(r, 1)
-        for c in range(1, 2):
-            self.top_grid_layout.setColumnStretch(c, 1)
+
         self.qtgui_number_sink_1 = qtgui.number_sink(
             gr.sizeof_float,
             0,
             qtgui.NUM_GRAPH_HORIZ,
             1,
-            None # parent
+            None
         )
-        self.qtgui_number_sink_1.set_update_time(0.05)
+        self.qtgui_number_sink_1.set_update_time(0.10)
         self.qtgui_number_sink_1.set_title("EVM")
 
-        labels = ['', '', '', '', '',
-            '', '', '', '', '']
-        units = ['', '', '', '', '',
-            '', '', '', '', '']
-        colors = [("black", "red"), ("black", "black"), ("black", "black"), ("black", "black"), ("black", "black"),
-            ("black", "black"), ("black", "black"), ("black", "black"), ("black", "black"), ("black", "black")]
-        factor = [1, 1, 1, 1, 1,
-            1, 1, 1, 1, 1]
+        labels = ['', '', '', '', '', '', '', '', '', '']
+        units = ['', '', '', '', '', '', '', '', '', '']
+        colors = [("black", "red")] + [("black", "black")]*9
+        factor = [1]*10
 
         for i in range(1):
             self.qtgui_number_sink_1.set_min(i, -1)
             self.qtgui_number_sink_1.set_max(i, 1)
             self.qtgui_number_sink_1.set_color(i, colors[i][0], colors[i][1])
-            if len(labels[i]) == 0:
-                self.qtgui_number_sink_1.set_label(i, "Data {0}".format(i))
-            else:
-                self.qtgui_number_sink_1.set_label(i, labels[i])
+            self.qtgui_number_sink_1.set_label(i, labels[i] if labels[i] else f"Data {i}")
             self.qtgui_number_sink_1.set_unit(i, units[i])
             self.qtgui_number_sink_1.set_factor(i, factor[i])
 
         self.qtgui_number_sink_1.enable_autoscale(True)
         self._qtgui_number_sink_1_win = sip.wrapinstance(self.qtgui_number_sink_1.qwidget(), Qt.QWidget)
         self.top_layout.addWidget(self._qtgui_number_sink_1_win)
+
         self.qtgui_const_sink_x_0 = qtgui.const_sink_c(
-            1024, #size
-            "RX_Constellation", #name
-            1, #number of inputs
-            None # parent
+            1024,
+            "RX_Constellation",
+            1,
+            None
         )
         self.qtgui_const_sink_x_0.set_update_time(0.10)
         self.qtgui_const_sink_x_0.set_y_axis((-2), 2)
@@ -227,25 +230,15 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
         self.qtgui_const_sink_x_0.enable_grid(True)
         self.qtgui_const_sink_x_0.enable_axis_labels(True)
 
-
-        labels = ['', '', '', '', '',
-            '', '', '', '', '']
-        widths = [1, 1, 1, 1, 1,
-            1, 1, 1, 1, 1]
-        colors = ["blue", "red", "red", "red", "red",
-            "red", "red", "red", "red", "red"]
-        styles = [0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0]
-        markers = [0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0]
-        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
-            1.0, 1.0, 1.0, 1.0, 1.0]
+        labels = ['', '', '', '', '', '', '', '', '', '']
+        widths = [1]*10
+        colors = ["blue"] + ["red"]*9
+        styles = [0]*10
+        markers = [0]*10
+        alphas = [1.0]*10
 
         for i in range(1):
-            if len(labels[i]) == 0:
-                self.qtgui_const_sink_x_0.set_line_label(i, "Data {0}".format(i))
-            else:
-                self.qtgui_const_sink_x_0.set_line_label(i, labels[i])
+            self.qtgui_const_sink_x_0.set_line_label(i, labels[i] if labels[i] else f"Data {i}")
             self.qtgui_const_sink_x_0.set_line_width(i, widths[i])
             self.qtgui_const_sink_x_0.set_line_color(i, colors[i])
             self.qtgui_const_sink_x_0.set_line_style(i, styles[i])
@@ -254,38 +247,21 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
 
         self._qtgui_const_sink_x_0_win = sip.wrapinstance(self.qtgui_const_sink_x_0.qwidget(), Qt.QWidget)
         self.top_grid_layout.addWidget(self._qtgui_const_sink_x_0_win, 1, 0, 1, 1)
-        for r in range(1, 2):
-            self.top_grid_layout.setRowStretch(r, 1)
-        for c in range(0, 1):
-            self.top_grid_layout.setColumnStretch(c, 1)
-        self._noise_volt_range = qtgui.Range(0, 2, 0.01, 0, 200)
-        self._noise_volt_win = qtgui.RangeWidget(self._noise_volt_range, self.set_noise_volt, "Noise Voltage", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.controls_grid_layout_0.addWidget(self._noise_volt_win, 1, 0, 1, 1)
-        for r in range(1, 2):
-            self.controls_grid_layout_0.setRowStretch(r, 1)
-        for c in range(0, 1):
-            self.controls_grid_layout_0.setColumnStretch(c, 1)
-        self._gain_tx_range = qtgui.Range(0, 74, 1, 50, 200)
-        self._gain_tx_win = qtgui.RangeWidget(self._gain_tx_range, self.set_gain_tx, "gain_tx", "counter_slider", int, QtCore.Qt.Horizontal)
-        self.controls_grid_layout_0.addWidget(self._gain_tx_win, 0, 0, 1, 1)
-        for r in range(0, 1):
-            self.controls_grid_layout_0.setRowStretch(r, 1)
-        for c in range(0, 1):
-            self.controls_grid_layout_0.setColumnStretch(c, 1)
+
         self._freq_offset_range = qtgui.Range(-0.1, 0.1, 0.001, 0, 200)
-        self._freq_offset_win = qtgui.RangeWidget(self._freq_offset_range, self.set_freq_offset, "Frequency Offset", "counter_slider", float, QtCore.Qt.Horizontal)
+        self._freq_offset_win = qtgui.RangeWidget(
+            self._freq_offset_range, self.set_freq_offset,
+            "Frequency Offset", "counter_slider", float, QtCore.Qt.Horizontal
+        )
         self.controls_grid_layout_0.addWidget(self._freq_offset_win, 1, 1, 1, 1)
-        for r in range(1, 2):
-            self.controls_grid_layout_0.setRowStretch(r, 1)
-        for c in range(1, 2):
-            self.controls_grid_layout_0.setColumnStretch(c, 1)
+
         self._eq_gain_range = qtgui.Range(0.0, 0.001, 0.0001, 0.0001, 200)
-        self._eq_gain_win = qtgui.RangeWidget(self._eq_gain_range, self.set_eq_gain, "Equalizer: rate", "counter_slider", float, QtCore.Qt.Horizontal)
+        self._eq_gain_win = qtgui.RangeWidget(
+            self._eq_gain_range, self.set_eq_gain,
+            "Equalizer: rate", "counter_slider", float, QtCore.Qt.Horizontal
+        )
         self.controls_grid_layout_1.addWidget(self._eq_gain_win, 1, 0, 1, 1)
-        for r in range(1, 2):
-            self.controls_grid_layout_1.setRowStretch(r, 1)
-        for c in range(0, 1):
-            self.controls_grid_layout_1.setColumnStretch(c, 1)
+
         self.digital_symbol_sync_xx_0 = digital.symbol_sync_cc(
             digital.TED_SIGNAL_TIMES_SLOPE_ML,
             sps,
@@ -297,50 +273,74 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
             digital.constellation_bpsk().base(),
             digital.IR_PFB_MF,
             nfilts,
-            rrc_taps)
-        self.digital_mpsk_snr_est_cc_0 = digital.mpsk_snr_est_cc(0, 10000, 0.001)
-        self.digital_meas_evm_cc_0 = digital.meas_evm_cc(qpsk_mg.base(),digital.evm_measurement_t.EVM_PERCENT)
-        self.digital_linear_equalizer_0 = digital.linear_equalizer(15, 2, variable_adaptive_algorithm_0, True, [ ], 'corr_est')
+            rrc_taps
+        )
+
+        self.digital_mpsk_snr_est_cc_0 = digital.mpsk_snr_est_cc(3, 10000, 0.001)
+        self.digital_meas_evm_cc_0 = digital.meas_evm_cc(qpsk_mg.base(), digital.evm_measurement_t.EVM_PERCENT)
+        self.digital_linear_equalizer_0 = digital.linear_equalizer(
+            15, 2, variable_adaptive_algorithm_0, True, [], 'corr_est'
+        )
         self.digital_costas_loop_cc_0 = digital.costas_loop_cc(phase_bw, arity, False)
+
         self._delay_range = qtgui.Range(0, 200, 1, 32, 200)
-        self._delay_win = qtgui.RangeWidget(self._delay_range, self.set_delay, "Delay", "counter_slider", int, QtCore.Qt.Horizontal)
+        self._delay_win = qtgui.RangeWidget(
+            self._delay_range, self.set_delay,
+            "Delay", "counter_slider", int, QtCore.Qt.Horizontal
+        )
         self.controls_grid_layout_0.addWidget(self._delay_win, 0, 1, 1, 1)
-        for r in range(0, 1):
-            self.controls_grid_layout_0.setRowStretch(r, 1)
-        for c in range(1, 2):
-            self.controls_grid_layout_0.setColumnStretch(c, 1)
+
         self.blocks_tag_debug_0 = blocks.tag_debug(gr.sizeof_gr_complex*1, 'SNR', "")
         self.blocks_tag_debug_0.set_display(True)
-        self.blocks_probe_signal_x_0 = blocks.probe_signal_f()
-        self.blocks_moving_average_xx_0_0 = blocks.moving_average_ff(400, 0.002, 4000, 1)
-        self.analog_agc_xx_0 = analog.agc_cc((1e-4), 1.0, 1.0)
 
+        # Probe + moving average used by publisher to read EVM
+        self.blocks_probe_signal_x_0 = blocks.probe_signal_f()
+        self.blocks_moving_average_xx_0_0 = blocks.moving_average_ff(500, 0.002, 4000, 1)
+
+        # Your file sink stays as-is in the new code
+        self.blocks_file_sink_0 = blocks.file_sink(
+            gr.sizeof_float*1,
+            "./evm.bin",
+            False
+        )
+
+        self.blocks_file_sink_0.set_unbuffered(True)
+
+        self.analog_agc_xx_0 = analog.agc_cc((1e-4), 1.0, 1.0)
 
         ##################################################
         # Connections
         ##################################################
+        self.connect((self.uhd_usrp_source_0, 0), (self.analog_agc_xx_0, 0))
+
         self.connect((self.analog_agc_xx_0, 0), (self.digital_symbol_sync_xx_0, 0))
         self.connect((self.analog_agc_xx_0, 0), (self.qtgui_sink_x_1_0, 0))
-        self.connect((self.blocks_moving_average_xx_0_0, 0), (self.blocks_probe_signal_x_0, 0))
-        self.connect((self.blocks_moving_average_xx_0_0, 0), (self.qtgui_number_sink_1, 0))
+
+        self.connect((self.digital_symbol_sync_xx_0, 0), (self.digital_linear_equalizer_0, 0))
+        self.connect((self.digital_linear_equalizer_0, 0), (self.digital_costas_loop_cc_0, 0))
+
         self.connect((self.digital_costas_loop_cc_0, 0), (self.digital_meas_evm_cc_0, 0))
         self.connect((self.digital_costas_loop_cc_0, 0), (self.digital_mpsk_snr_est_cc_0, 0))
         self.connect((self.digital_costas_loop_cc_0, 0), (self.qtgui_const_sink_x_0, 0))
-        self.connect((self.digital_linear_equalizer_0, 0), (self.digital_costas_loop_cc_0, 0))
-        self.connect((self.digital_meas_evm_cc_0, 0), (self.blocks_moving_average_xx_0_0, 0))
+
         self.connect((self.digital_mpsk_snr_est_cc_0, 0), (self.blocks_tag_debug_0, 0))
-        self.connect((self.digital_symbol_sync_xx_0, 0), (self.digital_linear_equalizer_0, 0))
-        self.connect((self.uhd_usrp_source_0, 0), (self.analog_agc_xx_0, 0))
-    # -----------------------------
-    # EVM getter (from probe)
-    # -----------------------------
+
+        self.connect((self.digital_meas_evm_cc_0, 0), (self.blocks_file_sink_0, 0))
+        self.connect((self.digital_meas_evm_cc_0, 0), (self.blocks_moving_average_xx_0_0, 0))
+
+        self.connect((self.blocks_moving_average_xx_0_0, 0), (self.blocks_probe_signal_x_0, 0))
+        self.connect((self.blocks_moving_average_xx_0_0, 0), (self.qtgui_number_sink_1, 0))
+
+        # -----------------------------
+        # EVM getter (from probe)
+        # -----------------------------
     def get_evm_pct(self):
         # blocks_probe_signal_x_0 is fed by moving average of meas_evm_cc_0 output
         return float(self.blocks_probe_signal_x_0.level())
 
-    # -----------------------------
-    # ZMQ PUB: publish EVM
-    # -----------------------------
+        # -----------------------------
+        # ZMQ PUB: publish EVM
+        # -----------------------------
     def start_evm_publisher(self, bind_addr="tcp://*:52001", period_s=0.05):
         """
         Start a background thread that publishes EVM (%).
@@ -391,7 +391,6 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
         except Exception:
             pass
 
-
     def closeEvent(self, event):
         self.settings = Qt.QSettings("GNU Radio", "iq_demodulator_gui")
         self.settings.setValue("geometry", self.saveGeometry())
@@ -402,7 +401,6 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
         self.stop()
         self.wait()
         event.accept()
-
 
     def get_d(self):
         return self.d
@@ -415,8 +413,14 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
 
     def set_sps(self, sps):
         self.sps = sps
-        self.set_rrc_taps(firdes.root_raised_cosine(self.nfilts, self.nfilts, 1.0/float(self.sps), self.excess_bw, 11*self.sps*self.nfilts))
-        self.set_rrc_taps_tx(firdes.root_raised_cosine(self.nfilts, self.nfilts, 1.0, self.excess_bw, 11*self.sps*self.nfilts))
+        self.set_rrc_taps(firdes.root_raised_cosine(
+            self.nfilts, self.nfilts, 1.0/float(self.sps),
+            self.excess_bw, 11*self.sps*self.nfilts
+        ))
+        self.set_rrc_taps_tx(firdes.root_raised_cosine(
+            self.nfilts, self.nfilts, 1.0,
+            self.excess_bw, 11*self.sps*self.nfilts
+        ))
         self.set_taps_per_filt(int((11*self.sps*self.nfilts)/self.nfilts))
         self.digital_symbol_sync_xx_0.set_sps(self.sps)
 
@@ -431,8 +435,14 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
 
     def set_nfilts(self, nfilts):
         self.nfilts = nfilts
-        self.set_rrc_taps(firdes.root_raised_cosine(self.nfilts, self.nfilts, 1.0/float(self.sps), self.excess_bw, 11*self.sps*self.nfilts))
-        self.set_rrc_taps_tx(firdes.root_raised_cosine(self.nfilts, self.nfilts, 1.0, self.excess_bw, 11*self.sps*self.nfilts))
+        self.set_rrc_taps(firdes.root_raised_cosine(
+            self.nfilts, self.nfilts, 1.0/float(self.sps),
+            self.excess_bw, 11*self.sps*self.nfilts
+        ))
+        self.set_rrc_taps_tx(firdes.root_raised_cosine(
+            self.nfilts, self.nfilts, 1.0,
+            self.excess_bw, 11*self.sps*self.nfilts
+        ))
         self.set_taps_per_filt(int((11*self.sps*self.nfilts)/self.nfilts))
 
     def get_excess_bw(self):
@@ -440,8 +450,14 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
 
     def set_excess_bw(self, excess_bw):
         self.excess_bw = excess_bw
-        self.set_rrc_taps(firdes.root_raised_cosine(self.nfilts, self.nfilts, 1.0/float(self.sps), self.excess_bw, 11*self.sps*self.nfilts))
-        self.set_rrc_taps_tx(firdes.root_raised_cosine(self.nfilts, self.nfilts, 1.0, self.excess_bw, 11*self.sps*self.nfilts))
+        self.set_rrc_taps(firdes.root_raised_cosine(
+            self.nfilts, self.nfilts, 1.0/float(self.sps),
+            self.excess_bw, 11*self.sps*self.nfilts
+        ))
+        self.set_rrc_taps_tx(firdes.root_raised_cosine(
+            self.nfilts, self.nfilts, 1.0,
+            self.excess_bw, 11*self.sps*self.nfilts
+        ))
 
     def get_eq_gain(self):
         return self.eq_gain
@@ -507,18 +523,6 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
         self.phase_bw = phase_bw
         self.digital_costas_loop_cc_0.set_loop_bandwidth(self.phase_bw)
 
-    def get_noise_volt(self):
-        return self.noise_volt
-
-    def set_noise_volt(self, noise_volt):
-        self.noise_volt = noise_volt
-
-    def get_gain_tx(self):
-        return self.gain_tx
-
-    def set_gain_tx(self, gain_tx):
-        self.gain_tx = gain_tx
-
     def get_gain_rx(self):
         return self.gain_rx
 
@@ -553,17 +557,13 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
         self.arity = arity
 
 
-
-
 def main(top_block_cls=iq_demodulator_gui, options=None):
-
     qapp = Qt.QApplication(sys.argv)
 
     tb = top_block_cls()
-
     tb.start()
 
-    # Start ZMQ publisher (same as your non-GUI version)
+    # Start ZMQ publisher (same logic as your original publish-enabled version)
     tb.start_evm_publisher(bind_addr="tcp://*:52001", period_s=0.05)
 
     tb.show()
@@ -573,7 +573,6 @@ def main(top_block_cls=iq_demodulator_gui, options=None):
             tb.stop_evm_publisher()
         except Exception:
             pass
-
         tb.stop()
         tb.wait()
         Qt.QApplication.quit()
