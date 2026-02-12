@@ -22,3 +22,4 @@ server/pyvenv.cfg
 server/utils/__pycache__
 *.pyc
 data/
+client/evm
