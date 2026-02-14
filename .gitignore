@@ -23,3 +23,5 @@ server/utils/__pycache__
 *.pyc
 data/
 client/evm
+server/share/jupyter/kernels/python3
+server/share/man/man1
