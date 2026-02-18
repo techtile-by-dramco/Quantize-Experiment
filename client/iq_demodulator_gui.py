@@ -298,13 +298,13 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
         self.blocks_moving_average_xx_0_0 = blocks.moving_average_ff(500, 0.002, 4000, 1)
 
         # Your file sink stays as-is in the new code
-        self.blocks_file_sink_0 = blocks.file_sink(
-            gr.sizeof_float*1,
-            "./evm.bin",
-            False
-        )
+        # self.blocks_file_sink_0 = blocks.file_sink(
+        #     gr.sizeof_float*1,
+        #     "./evm.bin",
+        #     False
+        # )
 
-        self.blocks_file_sink_0.set_unbuffered(True)
+        # self.blocks_file_sink_0.set_unbuffered(True)
 
         self.analog_agc_xx_0 = analog.agc_cc((1e-4), 1.0, 1.0)
 
@@ -325,7 +325,7 @@ class iq_demodulator_gui(gr.top_block, Qt.QWidget):
 
         self.connect((self.digital_mpsk_snr_est_cc_0, 0), (self.blocks_tag_debug_0, 0))
 
-        self.connect((self.digital_meas_evm_cc_0, 0), (self.blocks_file_sink_0, 0))
+        # self.connect((self.digital_meas_evm_cc_0, 0), (self.blocks_file_sink_0, 0))
         self.connect((self.digital_meas_evm_cc_0, 0), (self.blocks_moving_average_xx_0_0, 0))
 
         self.connect((self.blocks_moving_average_xx_0_0, 0), (self.blocks_probe_signal_x_0, 0))
